@@ -37,34 +37,66 @@ cat ~/.ssh/id_rsa.pub
 ## Git Guide
 
 ### Clone a Repository (download project for the first time)
-    git clone git@github.com:<username>/<repo-name>.git
-    cd <repo-name>
-
+```bash
+git clone git@github.com:<username>/<repo-name>.git
+cd <repo-name>
+```
 ### Check status (see changes in your files)
-    git status
-
+```bash
+git status
+```
 ### Add files (stage changes for commit)
-    git add <filename>    # add one file
-    git add .             # add everything
-
+```bash
+git add <filename>    # add one file
+git add .             # add everything
+```
 ### Commit changes (save a snapshot locally)
-    git commit -m "Explain what you changed"
-
+```bash
+git commit -m "Explain what you changed"
+```
 ### Push changes (upload your work to GitHub)
-    git push origin main
-
+```bash
+git push origin main
+```
 ### Fetch (see if there are new changes, but don’t merge them yet)
-    git fetch origin
-
+```bash
+git fetch origin
+```
 ### Merge (combine changes from others into your branch)
-    git merge origin/main
-
+```bash
+git merge origin/main
+```
 ### View commit history
-    git log --oneline
-
+```bash
+git log --oneline
+```
 ### Undo local changes to a file (irreversible):
-    git checkout -- <filename>
+```bash
+git checkout -- <filename>
+```
 
+## Pushing changes 
+1. Open folder in terminal
+```bash
+mv AslGlove
+```
+2. Go to new dev branch
+```bash
+git checkout -b "dev/yourName"
+```
+3. Add all changed file to working directory
+```bash
+git add -a
+```
+4. Commit changes
+```bash
+git commit -m "description of changes"
+``` 
+5. Push changes to repo
+```bash
+git push
+```
+6. Open github web browser and make a Pull request
 --- 
 
 ## Setting up Rtos Environment 
