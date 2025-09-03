@@ -34,7 +34,30 @@ cat ~/.ssh/id_rsa.pub
 4. Go to GitHub → Settings → SSH and GPG keys → New SSH key.
 5. Paste your key and save.
 
-## Git Guide
+## Pushing changes 
+1. Open folder in terminal
+```bash
+mv AslGlove
+```
+2. Go to new dev branch
+```bash
+git checkout -b "dev/yourName"
+```
+3. Add all changed file to working directory
+```bash
+git add .
+```
+4. Commit changes
+```bash
+git commit -m "description of changes"
+``` 
+5. Push changes to repo
+```bash
+git push
+```
+6. Open github web browser and make a Pull request
+
+## Git Basic Commands
 
 ### Clone a Repository (download project for the first time)
 ```bash
@@ -74,29 +97,6 @@ git log --oneline
 ```bash
 git checkout -- <filename>
 ```
-
-## Pushing changes 
-1. Open folder in terminal
-```bash
-mv AslGlove
-```
-2. Go to new dev branch
-```bash
-git checkout -b "dev/yourName"
-```
-3. Add all changed file to working directory
-```bash
-git add -a
-```
-4. Commit changes
-```bash
-git commit -m "description of changes"
-``` 
-5. Push changes to repo
-```bash
-git push
-```
-6. Open github web browser and make a Pull request
 --- 
 
 ## Setting up Rtos Environment 
