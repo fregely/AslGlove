@@ -37,7 +37,7 @@ cat ~/.ssh/id_rsa.pub
 ## Pushing changes 
 1. Open folder in terminal
 ```bash
-mv AslGlove
+cd AslGlove
 ```
 2. Go to new dev branch
 ```bash
