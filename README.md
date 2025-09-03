@@ -53,7 +53,7 @@ git commit -m "description of changes"
 ``` 
 5. Push changes to repo
 ```bash
-git push
+git push --set-upstream origin dev/yourName
 ```
 6. Open github web browser and make a Pull request
 
