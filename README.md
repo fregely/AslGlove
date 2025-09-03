@@ -17,19 +17,19 @@ Set your name and email (these appear in commits):
 ```bash
 git config --global user.name "Your Name"
 git config --global user.email "your.email@example.com"
-```bash
+```
 
 ## Generating an SSH Key (to connect to GitHub securely)
 
 1. In your terminal, run:
 ```bash
 ssh-keygen -t rsa -b 4096 -C "your.email@example.com"
-```bash
+```
 2. When asked for passphrase press `Enter` to skip
 3. Copy your public key to the clipboard
 ```bash
 cat ~/.ssh/id_rsa.pub
-```bash
+```
 
 4. Go to GitHub → Settings → SSH and GPG keys → New SSH key.
 5. Paste your key and save.
