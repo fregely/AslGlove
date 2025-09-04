@@ -99,7 +99,8 @@ git checkout -- <filename>
 ```
 --- 
 
-## Setting up Rtos Environment 
+## Setting up Rtos Environment TODO
+https://docs.espressif.com/projects/esp-idf/en/latest/esp32/get-started/linux-macos-setup.html
 
 
 
