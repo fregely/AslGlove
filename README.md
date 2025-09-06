@@ -53,7 +53,7 @@ git commit -m "description of changes"
 ``` 
 5. Push changes to repo
 ```bash
-git push
+git push --set-upstream origin dev/yourName
 ```
 6. Open github web browser and make a Pull request
 
@@ -98,6 +98,14 @@ git log --oneline
 git checkout -- <filename>
 ```
 --- 
+
+flashing 
+get_idf
+idf.py set-target esp32c3
+idf.py build //dont really need
+idf.py -p /dev/ttyUSB0 flash 
+idf.py -p /dev/ttyUSB0 monitor
+
 
 ## Setting up Rtos Environment TODO
 https://docs.espressif.com/projects/esp-idf/en/latest/esp32/get-started/linux-macos-setup.html
