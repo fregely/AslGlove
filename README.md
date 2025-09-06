@@ -37,7 +37,7 @@ cat ~/.ssh/id_rsa.pub
 ## Pushing changes 
 1. Open folder in terminal
 ```bash
-mv AslGlove
+cd AslGlove
 ```
 2. Go to new dev branch
 ```bash
@@ -101,9 +101,27 @@ git checkout -- <filename>
 
 ## Setting up Rtos Environment TODO
 https://docs.espressif.com/projects/esp-idf/en/latest/esp32/get-started/linux-macos-setup.html
+get_idf - once you have it in that one file that is for sourcing
+idf.py set-target esp32c3 #need to install this keychain seperately
+https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32c3/esp32-c3-devkitm-1/user_guide.html
+ls -l /dev/ttyUSB*
+lsusb  -- for usb 
+https://www.espressif.com/sites/default/files/documentation/esp32-c3_datasheet_en.pdf
 
+Reading from bluetooth gatt 
 
+bluetoothctl
+connect 18:8B:0E:AE:BF:CE
+menu gatt
+list-attributes
 
+look for the service
+/service0028/char0029
+UUID: 00002a37-0000-1000-8000-00805f9b34fb
+Heart Rate Measurement
 
+select-attribute 00002a37-0000-1000-8000-00805f9b34fb
 
+notify on
 
+https://www.freertos.org/Documentation/01-FreeRTOS-quick-start/01-Beginners-guide/00-Overview

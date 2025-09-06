@@ -32,7 +32,7 @@ idf.py set-target esp32
 ```
 
 ### Build and Flash
-
+  
 Run the following command to build, flash and monitor the project.
 
 ``` Shell
