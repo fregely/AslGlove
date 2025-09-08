@@ -2,6 +2,8 @@
 
 openCV blob detection guide 
 https://opencv.org/blog/blob-detection-using-opencv/
+^ gives both python and C++, I (david) would prefer to use C++ just to keep all the programs 
+in c/c++ but if your more comfortable with python you can us that instead
 
 ---
 ## Git Setup (First Time)  
