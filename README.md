@@ -1,5 +1,7 @@
 # ASL Glove Project  
 
+openCV blob detection guide 
+https://opencv.org/blog/blob-detection-using-opencv/
 
 ---
 ## Git Setup (First Time)  
