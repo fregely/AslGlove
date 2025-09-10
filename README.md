@@ -34,7 +34,7 @@ Requirements
 
     Now you can run scripts directly with the Run ▶️ button or F5.
 
-
+---
 openCV blob detection guide 
 https://opencv.org/blog/blob-detection-using-opencv/
 ^ gives both python and C++, I (david) would prefer to use C++ just to keep all the programs 
