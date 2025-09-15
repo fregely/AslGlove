@@ -1,6 +1,7 @@
 #include "nimble_common.h"
 #include "nimble_gap.h"
 #include "nimble_gatt.h"
+
 /* Private function declarations */
 inline static void format_addr(char *addr_str, uint8_t addr[]);
 static void print_conn_desc(struct ble_gap_conn_desc *desc);
@@ -253,27 +254,20 @@ void adv_init(void){
      /* Start advertising. */
      start_advertising();
 }
-static bool test = false;
+
 int gap_init(void) {
     /* Local variables */
     int rc = 0;
 
     /* Call NimBLE GAP initialization API */
-    // ble_svc_gap_init();
+    ble_svc_gap_init();
 
     /* Set GAP device name */
-    if(test == true){
-        
-        ESP_LOGE(TAG, "failed in gap_init");
-            return 0;
-    }else{
     rc = ble_svc_gap_device_name_set(DEVICE_NAME);
     if (rc != 0) {
         ESP_LOGE(TAG, "failed to set device name to %s, error code: %d",
                  DEVICE_NAME, rc);
         return rc;
     }
-    test = true;
     return rc;
-    }   
 }

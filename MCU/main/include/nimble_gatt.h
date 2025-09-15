@@ -7,10 +7,10 @@
 /* NimBLE GAP APIs */
 #include "host/ble_gap.h"
 
-void nimble_ble_task(void *pvParameters);
+void gatt_svr_register_cb(struct ble_gatt_register_ctxt *ctxt, void *arg);
 void gatt_svr_subscribe_cb(struct ble_gap_event *event);
-int gatt_svr_init(void);
-void nimble_start(void);
+int gatt_init(void);
+
 
 
 #endif // NIMBLE_GATT_H

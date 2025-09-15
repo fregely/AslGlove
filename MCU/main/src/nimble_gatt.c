@@ -5,12 +5,6 @@
 #include "services/gap/ble_svc_gap.h"
 #include "services/gatt/ble_svc_gatt.h"
 
-
-
-/* === External functions in your gap module (implemented in gap.c) ===
-   We call gap_init() to set device name/address and adv_init() to start advertising.
-   Your gap.c already exposes gap_init() and adv_init() in your last post.
-*/
 extern int gap_init(void);
 extern void adv_init(void);
 
@@ -21,10 +15,6 @@ static int time_rw_cb(uint16_t conn_handle, uint16_t attr_handle,
                       struct ble_gatt_access_ctxt *ctxt, void *arg);
 static int led_rw_cb(uint16_t conn_handle, uint16_t attr_handle,
                      struct ble_gatt_access_ctxt *ctxt, void *arg);
-
-/* NimBLE reset/sync callbacks */
-static void bleprph_on_reset(int reason);
-static void bleprph_on_sync(void);
 
 /* IMU notify state (updated from subscription callback) */
 static uint16_t imu_data_handle = 0;         // filled by GATT stack
@@ -101,65 +91,109 @@ static int cmd_write_cb(uint16_t conn_handle, uint16_t attr_handle,
 static int time_rw_cb(uint16_t conn_handle, uint16_t attr_handle,
     struct ble_gatt_access_ctxt *ctxt, void *arg)
 {
-int rc;
+    int rc;
 
-if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR) {
-uint8_t buf[8]; // Example: 64-bit timestamp
-rc = ble_hs_mbuf_to_flat(ctxt->om, buf, sizeof(buf), NULL);
-if (rc == 0) {
-ESP_LOGI(TAG, "Time sync write: %d bytes, first=%02x", sizeof(buf), buf[0]);
-// TODO: parse/store timestamp here
-} else {
-return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
-}
-} else if (ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR) {
-uint8_t response[4] = {0, 1, 2, 3}; // Example payload
-rc = os_mbuf_append(ctxt->om, response, sizeof(response));
-if (rc != 0) {
-return BLE_ATT_ERR_INSUFFICIENT_RES;
-}
-}
+    if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR) {
+        uint8_t buf[8]; // Example: 64-bit timestamp
+        rc = ble_hs_mbuf_to_flat(ctxt->om, buf, sizeof(buf), NULL);
+        if (rc == 0) {
+            ESP_LOGI(TAG, "Time sync write: %d bytes, first=%02x", sizeof(buf), buf[0]);
+        // TODO: parse/store timestamp here
+        } else {
+            return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+        }
+    } else if (ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR) {
+        uint8_t response[4] = {0, 1, 2, 3}; // Example payload
+        rc = os_mbuf_append(ctxt->om, response, sizeof(response));
+        if (rc != 0) {
+            return BLE_ATT_ERR_INSUFFICIENT_RES;
+        }
+    }   
 
-return 0;
+    return 0;
 }
 
 
 static int led_rw_cb(uint16_t conn_handle, uint16_t attr_handle,
     struct ble_gatt_access_ctxt *ctxt, void *arg)
 {
-static uint8_t led_state = 0;
-int rc;
+    static uint8_t led_state = 0;
+    int rc;
 
-if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR) {
-rc = ble_hs_mbuf_to_flat(ctxt->om, &led_state, sizeof(led_state), NULL);
-if (rc != 0) {
-return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+    if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR) {
+        rc = ble_hs_mbuf_to_flat(ctxt->om, &led_state, sizeof(led_state), NULL);
+        if (rc != 0) {
+            return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+        }
+        ESP_LOGI(TAG, "LED write: %d", led_state);
+
+    // TODO: gpio_set_level(GPIO_NUM_X, led_state);
+
+    } else if (ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR) {
+        rc = os_mbuf_append(ctxt->om, &led_state, sizeof(led_state));
+        if (rc != 0) {
+            return BLE_ATT_ERR_INSUFFICIENT_RES;
+        }
+    }
+
+    return 0;
 }
-ESP_LOGI(TAG, "LED write: %d", led_state);
 
-// TODO: gpio_set_level(GPIO_NUM_X, led_state);
+/*
+ *  Handle GATT attribute register events
+ *      - Service register event
+ *      - Characteristic register event
+ *      - Descriptor register event
+ */
+ void gatt_svr_register_cb(struct ble_gatt_register_ctxt *ctxt, void *arg) {
+    /* Local variables */
+    char buf[BLE_UUID_STR_LEN];
 
-} else if (ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR) {
-rc = os_mbuf_append(ctxt->om, &led_state, sizeof(led_state));
-if (rc != 0) {
-return BLE_ATT_ERR_INSUFFICIENT_RES;
+    /* Handle GATT attributes register events */
+    switch (ctxt->op) {
+
+    /* Service register event */
+    case BLE_GATT_REGISTER_OP_SVC:
+        ESP_LOGD(TAG, "registered service %s with handle=%d",
+                 ble_uuid_to_str(ctxt->svc.svc_def->uuid, buf),
+                 ctxt->svc.handle);
+        break;
+
+    /* Characteristic register event */
+    case BLE_GATT_REGISTER_OP_CHR:
+        ESP_LOGD(TAG,
+                 "registering characteristic %s with "
+                 "def_handle=%d val_handle=%d",
+                 ble_uuid_to_str(ctxt->chr.chr_def->uuid, buf),
+                 ctxt->chr.def_handle, ctxt->chr.val_handle);
+        break;
+
+    /* Descriptor register event */
+    case BLE_GATT_REGISTER_OP_DSC:
+        ESP_LOGD(TAG, "registering descriptor %s with handle=%d",
+                 ble_uuid_to_str(ctxt->dsc.dsc_def->uuid, buf),
+                 ctxt->dsc.handle);
+        break;
+
+    /* Unknown event */
+    default:
+        assert(0);
+        break;
+    }
 }
-}
-
-return 0;
-}
 
 
-/* Called by gap.c when a subscribe event occurs.
-   gap.c already calls gatt_svr_subscribe_cb(event) in its gap_event_handler().
-*/
 void gatt_svr_subscribe_cb(struct ble_gap_event *event)
 {
-    ESP_LOGI(TAG, "gatt_svr_subscribe_cb: attr_handle=%d conn=%d cur_notify=%d cur_ind=%d",
-             event->subscribe.attr_handle,
-             event->subscribe.conn_handle,
-             event->subscribe.cur_notify,
-             event->subscribe.cur_indicate);
+    /* Check connection handle */
+    if (event->subscribe.conn_handle != BLE_HS_CONN_HANDLE_NONE) {
+        ESP_LOGI(TAG, "subscribe event; conn_handle=%d attr_handle=%d",
+                 event->subscribe.conn_handle, event->subscribe.attr_handle);
+    } else {
+        ESP_LOGI(TAG, "subscribe by nimble stack; attr_handle=%d",
+                 event->subscribe.attr_handle);
+    }
+
 
     if (event->subscribe.attr_handle == imu_data_handle) {
         imu_conn_handle = event->subscribe.conn_handle;
@@ -170,109 +204,36 @@ void gatt_svr_subscribe_cb(struct ble_gap_event *event)
     }
 }
 
-/* Register GATT services */
-int gatt_svr_init(void)
-{
-    int rc;        
-    ESP_LOGI(TAG, "in gatt_svr_init");
-    
-    /* Initialize base GATT service first */
+/*
+ *  GATT server initialization
+ *      1. Initialize GATT service
+ *      2. Update NimBLE host GATT services counter
+ *      3. Add GATT services to server
+ */
+ int gatt_init(void) {
+    /* Local variables */
+    int rc;
+
+    /* 1. GATT service initialization */
     ble_svc_gatt_init();
-    
-    /* Count and add custom services */
+
+
+    /* 2. Update GATT services counter */
     rc = ble_gatts_count_cfg(gatt_svcs);
-    if (rc != 0){
-        ESP_LOGE(TAG, "failed ble_gatts_count_cfg, error: %d", rc);
+    if (rc != 0) {
         return rc;
     }
-    
+
+    /* 3. Add GATT services */
     rc = ble_gatts_add_svcs(gatt_svcs);
-    ESP_LOGI(TAG, "ble_gatts_add_svcs result: %d", rc);
-    
-    return rc;
-}
-
-/* ble_hs reset callback */
-static void bleprph_on_reset(int reason)
-{
-    ESP_LOGE(TAG, "BLE reset; reason=%d", reason);
-}
-
-/* ble_hs sync callback
-   - call gap_init() (sets device name/address)
-   - call adv_init() (gap module will call start_advertising())
-*/
-static void bleprph_on_sync(void)
-{
-    ESP_LOGI(TAG, "BLE on_sync: stack ready");
-
-    int rc = gap_init();
     if (rc != 0) {
-        ESP_LOGE(TAG, "gap_init failed: %d", rc);
-        return;
+        return rc;
     }
 
-    /* init GATT services (must be done after ble_hs is up) */
-    rc = gatt_svr_init();
-    if (rc != 0) {
-        ESP_LOGE(TAG, "gatt_svr_init failed: %d", rc);
-        return;
-    }
-
-    /* now ask the gap module to start advertising */
-    adv_init();
+    return 0;
 }
 
-/* Host task that runs nimble loop */
-void ble_hs_task(void *param)
-{
-    ESP_LOGI(TAG, "BLE host thread starting");
-    nimble_port_run();
-    vTaskDelete(NULL);
-
-}
-
-// /* Public startup helper: call from app_main (or create as a task) */
-void nimble_start(void)
-{
-    esp_err_t err;
-    
-    ESP_LOGI(TAG, "Starting BLE initialization...");
-    
-    /* initialize NVS */
-    err = nvs_flash_init();
-    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        err = nvs_flash_init();
-    }
-    ESP_ERROR_CHECK(err);
-    ESP_LOGI(TAG, "NVS initialized");
-    
-    /* Release classic BT memory (optional but recommended) */
-    err = esp_bt_controller_mem_release(ESP_BT_MODE_CLASSIC_BT);
-    ESP_LOGI(TAG, "Classic BT memory release: %s", esp_err_to_name(err));
-    
-    /* Initialize NimBLE port - this handles controller init internally */
-    err = nimble_port_init();
-    ESP_LOGI(TAG, "NimBLE port init result: %s", esp_err_to_name(err));
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "NimBLE port init failed - stopping here");
-        return;
-    }
-    
-    /* Set callbacks */
-    ble_hs_cfg.reset_cb = bleprph_on_reset;
-    ble_hs_cfg.sync_cb  = bleprph_on_sync;
-    ESP_LOGI(TAG, "Callbacks set");
-    
-    /* Start NimBLE host task */
-    nimble_port_freertos_init(ble_hs_task);
-    ESP_LOGI(TAG, "NimBLE host task started");
-    
-    ESP_LOGI(TAG, "NimBLE initialization completed successfully");
-}
-
-/* Utility: send IMU notification if subscribed. Use from your IMU task. */
+/* Utility: send IMU notification if subscribed. Use from your IMU task. 
 int gatt_send_imu_notification(const uint8_t *data, size_t len)
 {
     if (!imu_notify_enabled || imu_conn_handle == BLE_HS_CONN_HANDLE_NONE) {
@@ -288,3 +249,4 @@ int gatt_send_imu_notification(const uint8_t *data, size_t len)
     }
     return rc;
 }
+*/

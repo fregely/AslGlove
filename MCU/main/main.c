@@ -1,10 +1,19 @@
 #include "nimble_common.h"
 #include "nimble_gatt.h"
 #include "nimble_gap.h"
+/*
+    initialization
+
+    Initialize LED, NVS flash, NimBLE host stack, GAP service
+    Initialize GATT service and add services to registration queue
+    Configure NimBLE host stack and start NimBLE host task thread, GATT services will be registered automatically when NimBLE host stack started
+    Start heart rate update task thread
+
+*/
+/* Includes */
 
 /* Library function declarations */
 void ble_store_config_init(void);
-
 
 /* Private function declarations */
 static void on_stack_reset(int reason);
@@ -18,7 +27,7 @@ static void nimble_host_task(void *param);
  *      - on_stack_reset is called when host resets BLE stack due to errors
  *      - on_stack_sync is called when host has synced with controller
  */
- static void on_stack_reset(int reason) {
+static void on_stack_reset(int reason) {
     /* On reset, print reset reason to console */
     ESP_LOGI(TAG, "nimble stack reset, reset reason: %d", reason);
 }
@@ -32,6 +41,7 @@ static void nimble_host_config_init(void) {
     /* Set host callbacks */
     ble_hs_cfg.reset_cb = on_stack_reset;
     ble_hs_cfg.sync_cb = on_stack_sync;
+    ble_hs_cfg.gatts_register_cb = gatt_svr_register_cb;
     ble_hs_cfg.store_status_cb = ble_store_util_status_rr;
 
     /* Store host configuration */
@@ -49,57 +59,53 @@ static void nimble_host_task(void *param) {
     vTaskDelete(NULL);
 }
 
+
 void app_main(void) {
-    // /* Local variables */
-    // int rc;
-    // esp_err_t ret;
-    // ESP_LOGI("MAIN", "Hello, world! The app is running.");
+    /* Local variables */
+    int rc;
+    esp_err_t ret;
+    /*
+     * NVS flash initialization
+     * Dependency of BLE stack to store configurations
+     */
+    ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES ||
+        ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        ret = nvs_flash_init();
+    }
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "failed to initialize nvs flash, error code: %d ", ret);
+        return;
+    }
 
-    // /*
-    //  * NVS flash initialization
-    //  * Dependency of BLE stack to store configurations
-    //  */
-    // ret = nvs_flash_init();
-    // if (ret == ESP_ERR_NVS_NO_FREE_PAGES ||
-    //     ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-    //     ESP_ERROR_CHECK(nvs_flash_erase());
-    //     ret = nvs_flash_init();
-    // }
-    // if (ret != ESP_OK) {
-    //     ESP_LOGE(TAG, "failed to initialize nvs flash, error code: %d ", ret);
-    //     return;
-    // }
+    /* NimBLE stack initialization */
+    ret = nimble_port_init();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "failed to initialize nimble stack, error code: %d ",
+                 ret);
+        return;
+    }
 
-    // /* NimBLE stack initialization */
-    // ret = nimble_port_init();
-    // if (ret != ESP_OK) {
-    //     ESP_LOGE(TAG, "failed to initialize nimble stack, error code: %d ",
-    //              ret);
-    //     return;
-    // }
+    /* GAP service initialization */
+    rc = gap_init();
+    if (rc != 0) {
+        ESP_LOGE(TAG, "failed to initialize GAP service, error code: %d", rc);
+        return;
+    }
 
-    // /* GAP service initialization */
-    // rc = gap_init();
-    // if (rc != 0) {
-    //     ESP_LOGE(TAG, "failed to initialize GAP service, error code: %d", rc);
-    //     return;
-    // }
+    /* GATT server initialization */
+    rc = gatt_init();
+    if (rc != 0) {
+        ESP_LOGE(TAG, "failed to initialize GATT server, error code: %d", rc);
+        return;
+    }
 
-    // // /* GATT server initialization */
-    // // rc = gatt_svr_init();
-    // // if (rc != 0) {
-    // //     ESP_LOGE(TAG, "failed to initialize GATT server, error code: %d", rc);
-    // //     return;
-    // // }
+    /* NimBLE host configuration initialization */
+    nimble_host_config_init();
 
-    // /* NimBLE host configuration initialization */
-    // nimble_host_config_init();
-
-    // /* Start NimBLE host task thread and return */
-    // xTaskCreate(nimble_host_task, "NimBLE Host", 4*1024, NULL, 5, NULL);
-    // return;
-    
-    ESP_LOGI("MAIN", "Hello, world! The app is running.");
-    nimble_start();  // This handles everything
-    
+    /* Start NimBLE host task thread and return */
+    xTaskCreate(nimble_host_task, "NimBLE Host", 4*1024, NULL, 5, NULL);
+    return;
 }
+
