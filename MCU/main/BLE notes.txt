@@ -1,0 +1,2 @@
+https://www.bluetooth.com/specifications/specs/battery-service/ - Battery information GATT service
+https://learn.adafruit.com/introduction-to-bluetooth-low-energy/introduction - Information on BLE and how they work 

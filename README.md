@@ -41,7 +41,7 @@ cat ~/.ssh/id_rsa.pub
 ## Pushing changes 
 1. Open folder in terminal
 ```bash
-mv AslGlove
+cd AslGlove
 ```
 2. Go to new dev branch
 ```bash
@@ -57,7 +57,7 @@ git commit -m "description of changes"
 ``` 
 5. Push changes to repo
 ```bash
-git push
+git push --set-upstream origin dev/yourName
 ```
 6. Open github web browser and make a Pull request
 
@@ -103,11 +103,37 @@ git checkout -- <filename>
 ```
 --- 
 
+flashing 
+get_idf
+idf.py set-target esp32c3
+idf.py fullclean
+idf.py build //dont really need
+idf.py -p /dev/ttyUSB0 flash 
+idf.py -p /dev/ttyUSB0 monitor
+
+
 ## Setting up Rtos Environment TODO
 https://docs.espressif.com/projects/esp-idf/en/latest/esp32/get-started/linux-macos-setup.html
+get_idf - once you have it in that one file that is for sourcing
+idf.py set-target esp32c3 #need to install this keychain seperately
+https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32c3/esp32-c3-devkitm-1/user_guide.html
+ls -l /dev/ttyUSB*
+lsusb  -- for usb 
+https://www.espressif.com/sites/default/files/documentation/esp32-c3_datasheet_en.pdf
 
+Reading from bluetooth gatt 
 
+bluetoothctl
+connect 18:8B:0E:AE:BF:CE
+menu gatt
+list-attributes
 
+look for the service
+/service0028/char0029
+c4e7a180-7b2f-4c95-bfc5-1d5c62123456 - for imu data 
 
+select-attribute 0c4e7a180-7b2f-4c95-bfc5-1d5c62123456
 
+notify on
 
+https://www.freertos.org/Documentation/01-FreeRTOS-quick-start/01-Beginners-guide/00-Overview

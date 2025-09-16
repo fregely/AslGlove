@@ -1,7 +1,0 @@
-secure_services:
-  - family: example
-    entries:
-      - id: 200
-        type: custom
-        function: example_sec_serv_aes_op
-        args: 5
