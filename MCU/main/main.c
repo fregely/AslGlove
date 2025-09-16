@@ -41,7 +41,7 @@ static void nimble_host_config_init(void) {
     /* Set host callbacks */
     ble_hs_cfg.reset_cb = on_stack_reset;
     ble_hs_cfg.sync_cb = on_stack_sync;
-    ble_hs_cfg.gatts_register_cb = gatt_svr_register_cb;
+    ble_hs_cfg.gatts_register_cb = gatt_register_cb;
     ble_hs_cfg.store_status_cb = ble_store_util_status_rr;
 
     /* Store host configuration */
@@ -106,6 +106,7 @@ void app_main(void) {
 
     /* Start NimBLE host task thread and return */
     xTaskCreate(nimble_host_task, "NimBLE Host", 4*1024, NULL, 5, NULL);
+    xTaskCreate(imu_data_task, "IMU Data", 2048, NULL, 5, NULL);
     return;
 }
 

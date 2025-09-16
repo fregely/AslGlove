@@ -25,17 +25,13 @@ static bool imu_notify_enabled = false;
 
 /* UUIDs */
 static const ble_uuid128_t IMU_SERVICE_UUID =
-    BLE_UUID128_INIT(0x99,0x88,0x77,0x66,0x55,0x44,0x33,0x22,0x11,0x00,0xaa,0xbb,0xcc,0xdd,0xee,0xff);
-
+    BLE_UUID128_INIT(0xff,0xee,0xdd,0xcc,0xbb,0xaa,0x00,0x11,0x22,0x33,0x44,0x55,0x66,0x77,0x88,0x99);
 static const ble_uuid128_t IMU_DATA_UUID =
-    BLE_UUID128_INIT(0xc4,0xe7,0xa1,0x80,0x7b,0x2f,0x4c,0x95,0xbf,0xc5,0x1d,0x5c,0x62,0x12,0x34,0x56);
-
+    BLE_UUID128_INIT(0x56,0x34,0x12,0x62,0x5c,0x1d,0xc5,0xbf,0x95,0x4c,0x2f,0x7b,0x80,0xa1,0xe7,0xc4);
 static const ble_uuid128_t TIME_SYNC_UUID =
-    BLE_UUID128_INIT(0xab,0xcd,0xef,0x12,0x34,0x56,0x78,0x90,0xab,0xcd,0xef,0x12,0x34,0x56,0x78,0x90);
-
+    BLE_UUID128_INIT(0x90,0x78,0x56,0x34,0x12,0xef,0xcd,0xab,0x90,0x78,0x56,0x34,0x12,0xef,0xcd,0xab);
 static const ble_uuid128_t LED_STATE_UUID =
-    BLE_UUID128_INIT(0x01,0x23,0x45,0x67,0x89,0xab,0xcd,0xef,0x01,0x23,0x45,0x67,0x89,0xab,0xcd,0xef);
-
+    BLE_UUID128_INIT(0xef,0xcd,0xab,0x89,0x67,0x45,0x23,0x01,0xef,0xcd,0xab,0x89,0x67,0x45,0x23,0x01);
 /* GATT table */
 static const struct ble_gatt_svc_def gatt_svcs[] = {
     {
@@ -44,6 +40,7 @@ static const struct ble_gatt_svc_def gatt_svcs[] = {
         .characteristics = (struct ble_gatt_chr_def[]) {
             {
                 .uuid = &IMU_DATA_UUID.u,
+                .access_cb = cmd_write_cb,
                 .flags = BLE_GATT_CHR_F_NOTIFY,
                 .val_handle = &imu_data_handle,
             },
@@ -64,6 +61,8 @@ static const struct ble_gatt_svc_def gatt_svcs[] = {
     },
     { 0 } // terminator
 };
+/* Add standard services alongside your custom service */
+
 
 /* --------- Access Callbacks (same as you had) ---------- */
 static int cmd_write_cb(uint16_t conn_handle, uint16_t attr_handle,
@@ -145,7 +144,7 @@ static int led_rw_cb(uint16_t conn_handle, uint16_t attr_handle,
  *      - Characteristic register event
  *      - Descriptor register event
  */
- void gatt_svr_register_cb(struct ble_gatt_register_ctxt *ctxt, void *arg) {
+ void gatt_register_cb(struct ble_gatt_register_ctxt *ctxt, void *arg) {
     /* Local variables */
     char buf[BLE_UUID_STR_LEN];
 
@@ -183,7 +182,7 @@ static int led_rw_cb(uint16_t conn_handle, uint16_t attr_handle,
 }
 
 
-void gatt_svr_subscribe_cb(struct ble_gap_event *event)
+void gatt_subscribe_cb(struct ble_gap_event *event)
 {
     /* Check connection handle */
     if (event->subscribe.conn_handle != BLE_HS_CONN_HANDLE_NONE) {
@@ -213,27 +212,38 @@ void gatt_svr_subscribe_cb(struct ble_gap_event *event)
  int gatt_init(void) {
     /* Local variables */
     int rc;
-
+    ESP_LOGI(TAG, "Kill youself 1");
     /* 1. GATT service initialization */
     ble_svc_gatt_init();
 
+    ESP_LOGI(TAG, "Kill youself 2");
 
     /* 2. Update GATT services counter */
     rc = ble_gatts_count_cfg(gatt_svcs);
     if (rc != 0) {
+        
+        ESP_LOGI(TAG, "Kill youself 3");
         return rc;
     }
+    ESP_LOGI(TAG, "Kill youself 4");
+
 
     /* 3. Add GATT services */
     rc = ble_gatts_add_svcs(gatt_svcs);
+    ESP_LOGI(TAG, "Kill youself 5");
+
     if (rc != 0) {
+        ESP_LOGI(TAG, "Kill youself 6");
+
         return rc;
     }
+    ESP_LOGI(TAG, "Kill youself ");
+
 
     return 0;
 }
 
-/* Utility: send IMU notification if subscribed. Use from your IMU task. 
+/* Utility: send IMU notification if subscribed. Use from your IMU task. */
 int gatt_send_imu_notification(const uint8_t *data, size_t len)
 {
     if (!imu_notify_enabled || imu_conn_handle == BLE_HS_CONN_HANDLE_NONE) {
@@ -249,4 +259,24 @@ int gatt_send_imu_notification(const uint8_t *data, size_t len)
     }
     return rc;
 }
-*/
+
+/* Add this task function to your code */
+void imu_data_task(void *param) {
+    uint8_t dummy_data[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06}; // Example IMU data
+    int counter = 0;
+    
+    while (1) {
+        // Only send if someone is subscribed
+        if (imu_notify_enabled && imu_conn_handle != BLE_HS_CONN_HANDLE_NONE) {
+            // Increment counter to show changing data
+            dummy_data[0] = counter++;
+            
+            int rc = gatt_send_imu_notification(dummy_data, sizeof(dummy_data));
+            if (rc == 0) {
+                ESP_LOGI(TAG, "Sent IMU notification: %d", counter-1);
+            }
+        }
+        
+        vTaskDelay(pdMS_TO_TICKS(1000)); // Send every 1 second
+    }
+}

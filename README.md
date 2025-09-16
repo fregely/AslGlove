@@ -126,10 +126,9 @@ list-attributes
 
 look for the service
 /service0028/char0029
-UUID: 00002a37-0000-1000-8000-00805f9b34fb
-Heart Rate Measurement
+c4e7a180-7b2f-4c95-bfc5-1d5c62123456 - for imu data 
 
-select-attribute 00002a37-0000-1000-8000-00805f9b34fb
+select-attribute 0c4e7a180-7b2f-4c95-bfc5-1d5c62123456
 
 notify on
 
