@@ -1,0 +1,68 @@
+# pylint: disable=E1101
+# type: ignore
+
+import cv2
+import numpy as np
+
+cap = cv2.VideoCapture(0)
+cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+cap.set(cv2.CAP_PROP_FPS, 60)
+
+# configure detector
+params = cv2.SimpleBlobDetector_Params()
+params.filterByColor = True
+params.blobColor = 255               # bright blobs
+
+params.filterByArea = True
+params.minArea = 40                  # tune
+params.maxArea = 2000
+
+params.filterByCircularity = True
+params.minCircularity = 0.80
+
+params.filterByConvexity = False
+params.filterByInertia   = False
+
+# internal threshold sweep (used if you pass gray directly)
+params.minThreshold = 150
+params.maxThreshold = 255
+params.thresholdStep = 5
+
+detector = cv2.SimpleBlobDetector_create(params)
+
+THRESH = 200
+kernel = np.ones((3,3), np.uint8)
+
+while True:
+    ok, frame = cap.read()
+    if not ok:
+        break
+
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    blur = cv2.GaussianBlur(gray, (5,5), 0)
+
+    # either: feed gray directly to detector (uses internal thresholds)
+    # keypoints = detector.detect(blur)
+
+    # or: control threshold yourself, then detect on mask edges
+    _, th = cv2.threshold(blur, THRESH, 255, cv2.THRESH_BINARY)
+    th = cv2.morphologyEx(th, cv2.MORPH_OPEN, kernel, iterations=1)
+    keypoints = detector.detect(th)
+
+    out = cv2.drawKeypoints(frame, keypoints, None, (0,255,0),
+                            cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+
+    cv2.imshow("mask", th)
+    cv2.imshow("blob detector", out)
+
+    k = cv2.waitKey(1) & 0xFF
+    if k == ord('q'):
+        break
+    elif k in (ord('+'), ord('=')):
+        THRESH = min(255, THRESH + 2)
+    elif k in (ord('-'), ord('_')):
+        THRESH = max(0, THRESH - 2)
+
+cap.release()
+cv2.destroyAllWindows()
