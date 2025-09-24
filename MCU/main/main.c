@@ -3,10 +3,8 @@
 #include "common.h"
 
 void app_main(void) {
-    imu_init();
-
 
     start_imu_task();
-    
+
     start_ble_task();
 }

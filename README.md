@@ -108,7 +108,7 @@ get_idf
 idf.py set-target esp32c3
 idf.py fullclean
 idf.py build //dont really need
-idf.py -p /dev/ttyUSB0 flash 
+idf.py -p /dev/ttyUSB0 flash monitor
 idf.py -p /dev/ttyUSB0 monitor
 
 
