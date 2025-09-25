@@ -35,7 +35,7 @@ def main() -> None:
             break
 
         # Convert to grayscale + blur
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) # resister value 910 Ω
         blurred = cv2.GaussianBlur(gray, (5, 5), 0)
 
         # Show both raw and processed views
@@ -51,4 +51,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-    
