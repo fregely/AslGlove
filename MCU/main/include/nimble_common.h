@@ -1,26 +1,7 @@
-/*
- * SPDX-FileCopyrightText: 2024 Espressif Systems (Shanghai) CO LTD
- *
- * SPDX-License-Identifier: Unlicense OR CC0-1.0
- */
- #ifndef COMMON_H
- #define COMMON_H
+ #ifndef NIMBLE_COMMON_H
+ #define NIMBLE_COMMON_H
  
- /* Includes */
- /* STD APIs */
- #include <assert.h>
- #include <stdbool.h>
- #include <stdio.h>
- #include <string.h>
- 
- /* ESP APIs */
- #include "esp_log.h"
- #include "nvs_flash.h"
- #include "sdkconfig.h"
- 
- /* FreeRTOS APIs */
- #include <freertos/FreeRTOS.h>
- #include <freertos/task.h>
+ #include "common.h"
  
  /* NimBLE stack APIs */
  #include "host/ble_hs.h"
@@ -36,5 +17,5 @@
  #define TAG "ASL_Glove_Server"
  #define DEVICE_NAME "ASL_Glove"
  
- #endif // COMMON_H
+ #endif // NIMBLE_COMMON_H
  
