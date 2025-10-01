@@ -1,0 +1,146 @@
+"""
+Live blob detection with OpenCV for ASL Glove CV work.
+Captures frames, thresholds bright IR markers, and highlights blobs in real time.
+Logs FPS, frame count, and blob coordinates to a timestamped CSV file.
+"""
+
+# Suppress linter false positives about cv2 dynamic attributes
+# pylint: disable=E1101
+
+import time
+import csv
+from datetime import datetime
+import numpy as np
+import cv2
+
+
+def main() -> None:
+    """Main loop to capture frames, detect blobs, and log data."""
+
+    print("OpenCV version:", cv2.__version__)
+
+    # --- Camera setup ---
+    cap = cv2.VideoCapture(0)  # Open default camera (index 0)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)   # Request 1280px wide frames
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)   # Request 720px tall frames
+    cap.set(cv2.CAP_PROP_FPS, 60)             # Request 60 frames per second
+
+    if not cap.isOpened():
+        print("❌ Error: Could not open camera.")
+        return
+
+    # --- Parameters for blob filtering ---
+    THRESH = 200          # Brightness threshold (0–255)
+    MIN_AREA = 40         # Minimum blob area in pixels^2
+    MAX_AREA = 2000       # Maximum blob area in pixels^2
+    MIN_CIRCULARITY = 0.8 # Require blobs to be round (0–1)
+
+    kernel = np.ones((3, 3), np.uint8)  # Morphology kernel for cleanup
+
+    # --- FPS + frame counters ---
+    prev_time = time.time()
+    fps = 0.0
+    frame_count = 0
+
+    # --- Timestamped CSV Logger ---
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    log_filename = f"detections_log_{timestamp}.csv"
+    log_file = open(log_filename, mode="w", newline="", encoding="utf-8")
+    csv_writer = csv.writer(log_file)
+    csv_writer.writerow(["Frame", "Timestamp", "FPS", "BlobCount", "BlobCenters"])
+    print(f"📁 Logging to {log_filename}")
+
+    while True:
+        # --- Capture frame ---
+        ret, frame = cap.read()
+        if not ret:
+            print("❌ Error: Failed to grab frame.")
+            break
+
+        frame_count += 1
+
+        # --- Preprocessing ---
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)   # Grayscale
+        blurred = cv2.GaussianBlur(gray, (5, 5), 0)      # Gaussian blur
+
+        # --- Thresholding ---
+        _, mask = cv2.threshold(blurred, THRESH, 255, cv2.THRESH_BINARY)
+
+        # --- Clean mask ---
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
+
+        # --- Find blobs ---
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        blob_centers = []
+        for c in contours:
+            area = cv2.contourArea(c)
+            if area < MIN_AREA or area > MAX_AREA:
+                continue
+
+            per = cv2.arcLength(c, True)
+            if per <= 0:
+                continue
+
+            circularity = 4 * np.pi * area / (per * per + 1e-9)
+            if circularity < MIN_CIRCULARITY:
+                continue
+
+            M = cv2.moments(c)
+            if M["m00"] == 0:
+                continue
+            cx, cy = int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"])
+            blob_centers.append((cx, cy))
+
+            # Draw bounding box
+            (x, y, w, h) = cv2.boundingRect(c)
+            cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+            cv2.putText(frame, f"({cx},{cy})", (x, y - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1, cv2.LINE_AA)
+
+        # --- FPS calculation ---
+        curr_time = time.time()
+        elapsed = curr_time - prev_time
+        if elapsed > 0:
+            fps = 1.0 / elapsed
+        prev_time = curr_time
+
+        # --- Overlay FPS + frame count ---
+        cv2.putText(frame, f"FPS: {fps:.1f}", (10, 25),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2, cv2.LINE_AA)
+        cv2.putText(frame, f"Frame: {frame_count}", (10, 55),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 200, 255), 2, cv2.LINE_AA)
+
+        # --- CSV logging ---
+        csv_writer.writerow([
+            frame_count,
+            f"{curr_time:.4f}",
+            f"{fps:.2f}",
+            len(blob_centers),
+            blob_centers
+        ])
+
+        # --- Show side-by-side view ---
+        mask_bgr = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
+        combined = np.hstack((frame, mask_bgr))
+        cv2.imshow("Detections | Threshold Mask", combined)
+
+        # --- Keyboard controls ---
+        k = cv2.waitKey(1) & 0xFF
+        if k == ord("q"):
+            break
+        elif k in (ord("+"), ord("=")):
+            THRESH = min(255, THRESH + 2)
+            print("Threshold:", THRESH)
+        elif k in (ord("-"), ord("_")):
+            THRESH = max(0, THRESH - 2)
+            print("Threshold:", THRESH)
+
+    # --- Cleanup ---
+    cap.release()
+    log_file.close()
+    cv2.destroyAllWindows()
+
+
+if __name__ == "__main__":
+    main()
