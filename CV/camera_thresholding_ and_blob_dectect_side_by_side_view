@@ -60,42 +60,41 @@ def main() -> None:
         frame_count += 1
 
         # --- Preprocessing ---
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)   # Grayscale
-        blurred = cv2.GaussianBlur(gray, (5, 5), 0)      # Gaussian blur
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)   # Grayscale, IR LEDs don't need color info, just brightness
+        blurred = cv2.GaussianBlur(gray, (5, 5), 0)      # Gaussian blur with 5x5 kernel to reduce noise
 
         # --- Thresholding ---
-        _, mask = cv2.threshold(blurred, THRESH, 255, cv2.THRESH_BINARY)
+        _, mask = cv2.threshold(blurred, THRESH, 255, cv2.THRESH_BINARY)  # Binary threshold to isolate bright spots, any pixel brighter than THRESH (200) becomes white (255), others black (0)
 
         # --- Clean mask ---
-        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1) # Morphological open to remove small specks (noise), kernel = 3x3 matrix of ones, iterations = 1 applies the operation once
 
         # --- Find blobs ---
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-        blob_centers = []
-        for c in contours:
-            area = cv2.contourArea(c)
-            if area < MIN_AREA or area > MAX_AREA:
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE) # Find contours (blobs) in the binary mask, only retrieves outmost contours, compresses contour points to save memeory, contour is a list of all candidate LED blobsl for further filtering
+        blob_centers = []                          # List to hold blob center coordinates
+        for c in contours:                         # Loops over to analyze each contour (a curve joining all the boundary points of a white blob in the thresholded image)
+            area = cv2.contourArea(c)              # Calculate area of each contour
+            if area < MIN_AREA or area > MAX_AREA: # skips blobs if they are too small (noise) or too large (not an LED)
                 continue
 
-            per = cv2.arcLength(c, True)
-            if per <= 0:
+            per = cv2.arcLength(c, True)           # Calculates the perimeter of contour (how round the blob is)
+            if per <= 0:                           # Safety check to avoid division by zero
                 continue
 
-            circularity = 4 * np.pi * area / (per * per + 1e-9)
-            if circularity < MIN_CIRCULARITY:
+            circularity = 4 * np.pi * area / (per * per + 1e-9) # Calculates the circularity of the blob (perfect circle about= 1, very irregular shape < 0.5)
+            if circularity < MIN_CIRCULARITY:                   # discards blobs that aren't circular enough (noise, streaks)
                 continue
 
-            M = cv2.moments(c)
-            if M["m00"] == 0:
+            M = cv2.moments(c)                   # Computes image moments for the contour (moments are particular weighted averages of image pixel intensities (help calculate centroid))      
+            if M["m00"] == 0:                    # Safety check to avoid division by zero
                 continue
-            cx, cy = int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"])
-            blob_centers.append((cx, cy))
+            cx, cy = int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"])     # computes the centroid of the blob     
+            blob_centers.append((cx, cy))                                   # cx = x-coordinate of centroid, cy = y-coordinate of centroid, adds the centroid coordinates to the list of blob centers
 
             # Draw bounding box
-            (x, y, w, h) = cv2.boundingRect(c)
-            cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
-            cv2.putText(frame, f"({cx},{cy})", (x, y - 10),
+            (x, y, w, h) = cv2.boundingRect(c)                             # computes the bounding box around the blob (x,y are the top-left coordinates, w is width, h is height)
+            cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)   # draws a green rectangle around the blob on the live feed
+            cv2.putText(frame, f"({cx},{cy})", (x, y - 10),                # prints the coordinates of the centroid above the bounding box
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1, cv2.LINE_AA)
 
         # --- FPS calculation ---
