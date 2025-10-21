@@ -1,0 +1,524 @@
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 9a 69 03 01 00 00 00 00 f8 58 01 18 41 a0 00  ..i.......X..A..
+[ASL_Glove:/service000e/char000f]#   82 00 2e ff f1 03 f0                             .......         
+[ASL_Glove:/service000e/char000f]# [CHG] Device 74:ED:8C:1C:84:90 RSSI: 0xffffffa7 (-89)
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 d5 76 06 01 00 00 00 00 f7 94 01 4c 43 34 00  ..v.........LC4.
+[ASL_Glove:/service000e/char000f]#   5d 00 95 00 0f 04 60                             ].....`         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 7a fd 07 01 00 00 00 00 f8 88 01 a8 41 68 00  .z...........Ah.
+[ASL_Glove:/service000e/char000f]#   91 00 38 ff d0 03 f0                             ..8....         
+[ASL_Glove:/service000e/char000f]# [CHG] Device 7A:40:F4:F5:0F:99 ManufacturerData.Key: 0x004c (76)
+[ASL_Glove:/service000e/char000f]# [CHG] Device 7A:40:F4:F5:0F:99 ManufacturerData.Value:
+[ASL_Glove:/service000e/char000f]#   10 07 33 1f d2 13 de 25 78                       ..3....%x       
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 b5 0a 0b 01 00 00 00 00 f7 d8 00 f4 43 00 00  .............C..
+[ASL_Glove:/service000e/char000f]#   71 00 96 ff fe 04 60                             q.....`         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 5a 91 0c 01 00 00 00 00 f8 68 01 80 41 2c 00  .Z........h..A,.
+[ASL_Glove:/service000e/char000f]#   ad 00 3b ff cf 04 00                             ..;....         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 95 9e 0f 01 00 00 00 00 f7 d8 01 34 42 84 00  ............4B..
+[ASL_Glove:/service000e/char000f]#   71 00 a5 ff eb 04 40                             q.....@         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 3a 25 11 01 00 00 00 00 f8 60 01 70 41 ac 00  .:%.......`.pA..
+[ASL_Glove:/service000e/char000f]#   75 00 31 ff cd 04 20                             u.1...          
+[ASL_Glove:/service000e/char000f]# [CHG] Device 5C:08:2B:25:B0:50 RSSI: 0xffffffa9 (-87)
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 75 32 14 01 00 00 00 00 f7 5c 01 50 42 90 00  .u2.......\.PB..
+[ASL_Glove:/service000e/char000f]#   7a 00 9e ff f4 04 60                             z.....`         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 1a b9 15 01 00 00 00 00 f8 1c 02 20 42 30 00  ............ B0.
+[ASL_Glove:/service000e/char000f]#   a0 00 11 ff d3 04 40                             ......@         
+[ASL_Glove:/service000e/char000f]# [CHG] Device 4D:97:C9:D2:97:77 RSSI: 0xffffffa9 (-87)
+[ASL_Glove:/service000e/char000f]# [NEW] Device 55:1B:DF:DD:E3:B5 55-1B-DF-DD-E3-B5
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 55 c6 18 01 00 00 00 00 f7 8c 01 4c 42 d0 00  .U..........LB..
+[ASL_Glove:/service000e/char000f]#   66 00 ab ff ea 04 a0                             f......         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 fa 4c 1a 01 00 00 00 00 f8 18 00 e8 41 80 00  ..L..........A..
+[ASL_Glove:/service000e/char000f]#   a1 00 23 ff c6 03 c0                             ..#....         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 35 5a 1d 01 00 00 00 00 f7 e4 01 8c 42 d0 00  .5Z..........B..
+[ASL_Glove:/service000e/char000f]#   52 00 c3 ff f2 04 a0                             R......         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 da e0 1e 01 00 00 00 00 f8 68 01 9c 40 34 00  ..........h..@4.
+[ASL_Glove:/service000e/char000f]#   a9 ff f2 ff af 03 d0                             .......         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 15 ee 21 01 00 00 00 00 f6 ec 03 f8 46 e4 f6  ...!.........F..
+[ASL_Glove:/service000e/char000f]#   62 00 77 ff 82 04 80                             b.w....         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 ba 74 23 01 00 00 00 00 e3 dc 00 fc 77 f0 e8  ..t#.........w..
+[ASL_Glove:/service000e/char000f]#   2f 08 22 f7 ca 03 f0                             /."....         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 f5 81 26 01 00 00 00 00 f4 c4 fc 20 41 68 fd  ...&........ Ah.
+[ASL_Glove:/service000e/char000f]#   3f ec b4 00 f3 04 80                             ?......         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 9a 08 28 01 00 00 00 00 f1 3c f1 c0 4e 88 f7  ...(......<..N..
+[ASL_Glove:/service000e/char000f]#   e4 fc df 01 09 03 f0                             .......         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 d5 15 2b 01 00 00 00 00 f6 88 f4 d4 3f 68 f6  ...+.........?h.
+[ASL_Glove:/service000e/char000f]#   77 00 f3 f8 81 04 80                             w......         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 7a 9c 2c 01 00 00 00 00 fc 98 f8 58 3c f4 fe  .z.,........X<..
+[ASL_Glove:/service000e/char000f]#   79 00 49 fc b7 03 c0                             y.I....         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 b5 a9 2f 01 00 00 00 00 e8 a4 f7 f4 44 2c 1b  .../.........D,.
+[ASL_Glove:/service000e/char000f]#   c5 3b 23 0b ec 04 60                             .;#...`         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 5a 30 31 01 00 00 00 00 e8 40 fc 04 3d a0 e3  .Z01......@..=..
+[ASL_Glove:/service000e/char000f]#   be e6 3b fe b7 03 80                             ..;....         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 95 3d 34 01 00 00 00 00 f9 f8 f2 74 34 f8 5a  ..=4........t4.Z
+[ASL_Glove:/service000e/char000f]#   ec 60 01 12 9f 04 a0                             .`.....         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 3a c4 35 01 00 00 00 00 d8 f4 fe b0 75 88 de  .:.5.........u..
+[ASL_Glove:/service000e/char000f]#   8e af a6 da 53 04 20                             ....S.          
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 75 d1 38 01 00 00 00 00 f6 14 0a fc 35 70 76  .u.8.........5pv
+[ASL_Glove:/service000e/char000f]#   fe 7f ff 2c ee 04 80                             ...,...         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 1a 58 3a 01 00 00 00 00 e1 b8 0f 48 4e c0 80  ..X:........HN..
+[ASL_Glove:/service000e/char000f]#   00 80 00 cc 99 04 00                             .......         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 55 65 3d 01 00 00 00 00 f3 b4 fb f4 49 24 32  .Ue=.........I$2
+[ASL_Glove:/service000e/char000f]#   63 4c 29 23 c6 04 b0                             cL)#...         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 fa eb 3e 01 00 00 00 00 f5 a0 00 70 27 10 80  ...>........p'..
+[ASL_Glove:/service000e/char000f]#   00 80 00 ca 06 03 f0                             .......         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 35 f9 41 01 00 00 00 00 f3 78 fd 24 56 f4 c8  .5.A......x.$V..
+[ASL_Glove:/service000e/char000f]#   8e b4 f6 de fc 04 60                             ......`         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 da 7f 43 01 00 00 00 00 17 ac f5 d0 f7 24 aa  ...C..........$.
+[ASL_Glove:/service000e/char000f]#   42 9d 48 d3 69 03 c0                             B.H.i..         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 15 8d 46 01 00 00 00 00 f6 10 00 70 48 dc 95  ...F........pH..
+[ASL_Glove:/service000e/char000f]#   98 80 0e c7 32 04 60                             ....2.`         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 ba 13 48 01 00 00 00 00 11 e8 f4 88 1b 74 ce  ...H..........t.
+[ASL_Glove:/service000e/char000f]#   78 cf 7d e1 db 03 80                             x.}....         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 f5 20 4b 01 00 00 00 00 00 d4 fa c4 38 7c d8  .. K.........8|.
+[ASL_Glove:/service000e/char000f]#   1c 0b 0d f9 48 04 60                             ....H.`         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 9a a7 4c 01 00 00 00 00 fe 6c e6 18 44 1c cc  ...L......l..D..
+[ASL_Glove:/service000e/char000f]#   23 03 99 03 80 04 00                             #......         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 d5 b4 4f 01 00 00 00 00 f2 c8 d6 14 35 a4 cb  ...O.........5..
+[ASL_Glove:/service000e/char000f]#   d5 ef 5b 1c f1 04 80                             ..[....         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 7a 3b 51 01 00 00 00 00 f1 64 cd 98 26 4c c5  .z;Q......d..&L.
+[ASL_Glove:/service000e/char000f]#   be e4 b6 1a 85 04 00                             .......         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 b5 48 54 01 00 00 00 00 f9 20 c4 c4 1c 5c e2  ..HT...... ...\.
+[ASL_Glove:/service000e/char000f]#   d8 dd 4e 02 84 04 b0                             ..N....         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 5a cf 55 01 00 00 00 00 fa 28 c2 b0 1c b0 e5  .Z.U......(.....
+[ASL_Glove:/service000e/char000f]#   28 f2 0c f8 08 04 00                             (......         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 95 dc 58 01 00 00 00 00 00 00 c2 58 08 e0 d2  ...X........X...
+[ASL_Glove:/service000e/char000f]#   ae ec 1b f6 40 04 80                             ....@..         
+[ASL_Glove:/service000e/char000f]# [DEL] Device 4C:C7:8B:A3:F8:8E 4C-C7-8B-A3-F8-8E
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 3a 63 5a 01 00 00 00 00 02 c8 c3 74 02 d8 db  .:cZ........t...
+[ASL_Glove:/service000e/char000f]#   29 e8 85 fb 43 03 c0                             )...C..         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 75 70 5d 01 00 00 00 00 01 18 c4 b8 ef c0 d6  .up]............
+[ASL_Glove:/service000e/char000f]#   f7 da f8 fb 08 04 a0                             .......         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 1a f7 5e 01 00 00 00 00 0b cc c2 10 c2 c0 d6  ...^............
+[ASL_Glove:/service000e/char000f]#   88 c0 85 fe e0 03 c0                             .......         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 55 04 62 01 00 00 00 00 fe e0 c8 70 d9 48 de  .U.b........p.H.
+[ASL_Glove:/service000e/char000f]#   78 f6 15 f8 4a 04 80                             x...J..         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 fa 8a 63 01 00 00 00 00 fd 0c cd 90 d3 74 d9  ...c..........t.
+[ASL_Glove:/service000e/char000f]#   8c f2 51 f4 02 04 20                             ..Q...          
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 35 98 66 01 00 00 00 00 fd 24 d5 f0 d1 58 e8  .5.f......$...X.
+[ASL_Glove:/service000e/char000f]#   de f9 11 f7 f4 04 80                             .......         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 da 1e 68 01 00 00 00 00 fd 94 d9 44 cf 2c eb  ...h........D.,.
+[ASL_Glove:/service000e/char000f]#   3a f8 af f7 3d 03 d0                             :...=..         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 15 2c 6b 01 00 00 00 00 fb 70 e2 c8 c7 c0 e4  ..,k......p.....
+[ASL_Glove:/service000e/char000f]#   74 f2 a9 f5 2a 04 70                             t...*.p         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 ba b2 6c 01 00 00 00 00 fb 90 e7 ac c4 10 e9  ...l............
+[ASL_Glove:/service000e/char000f]#   17 fb e7 f0 fc 03 d0                             .......         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 f5 bf 6f 01 00 00 00 00 f5 e0 f0 24 cc 98 ef  ...o........$...
+[ASL_Glove:/service000e/char000f]#   ae f9 13 fb 30 04 80                             ....0..         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 9a 46 71 01 00 00 00 00 f9 3c f2 d0 bf f8 f0  ..Fq......<.....
+[ASL_Glove:/service000e/char000f]#   28 f8 dd fe 6f 03 f0                             (...o..         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 d5 53 74 01 00 00 00 00 f8 bc f3 44 c3 54 04  ..St........D.T.
+[ASL_Glove:/service000e/char000f]#   41 fa 94 05 cf 04 b0                             A......         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 7a da 75 01 00 00 00 00 f5 14 ef 30 c4 2c 19  .z.u........0.,.
+[ASL_Glove:/service000e/char000f]#   1d 00 c8 05 12 03 b0                             .......         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 b5 e7 78 01 00 00 00 00 f8 d0 e1 a0 c6 88 33  ...x...........3
+[ASL_Glove:/service000e/char000f]#   79 11 d8 0a 81 04 b0                             y......         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 5a 6e 7a 01 00 00 00 00 fb c0 d8 a8 ca ac 30  .Znz...........0
+[ASL_Glove:/service000e/char000f]#   ee 18 5e 0e 5b 03 f0                             ..^.[..         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 95 7b 7d 01 00 00 00 00 fd e4 ca c8 da 70 1f  ..{}..........p.
+[ASL_Glove:/service000e/char000f]#   64 11 d6 0d ae 04 a0                             d......         
+[ASL_Glove:/service000e/char000f]# [CHG] Device 74:B1:FD:F5:4C:EF RSSI: 0xffffffab (-85)
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 3a 02 7f 01 00 00 00 00 fb 88 c7 68 e4 fc 3f  .:..........h..?
+[ASL_Glove:/service000e/char000f]#   66 1c 94 0b de 03 f0                             f......         
+[ASL_Glove:/service000e/char000f]# [NEW] Device 6C:F8:E2:2E:6C:CB 6C-F8-E2-2E-6C-CB
+[ASL_Glove:/service000e/char000f]# [NEW] Device 4F:A7:8B:7E:D6:82 4F-A7-8B-7E-D6-82
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 75 0f 82 01 00 00 00 00 fc 7c c0 64 ff 20 4e  .u........|.d. N
+[ASL_Glove:/service000e/char000f]#   c4 23 72 0f a7 04 80                             .#r....         
+[ASL_Glove:/service000e/char000f]# [CHG] Device 79:23:87:8E:7F:AE ManufacturerData.Key: 0x004c (76)
+[ASL_Glove:/service000e/char000f]# [CHG] Device 79:23:87:8E:7F:AE ManufacturerData.Value:
+[ASL_Glove:/service000e/char000f]#   0c 0e 00 8f 7b 92 42 aa 84 96 07 60 09 8d c6 42  ....{.B....`...B
+[ASL_Glove:/service000e/char000f]#   10 06 4b 19 e9 4b c5 38                          ..K..K.8        
+[ASL_Glove:/service000e/char000f]# [NEW] Device 4C:58:AA:E9:7D:F9 4C-58-AA-E9-7D-F9
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 1a 96 83 01 00 00 00 00 f5 68 c4 50 0c 8c 40  ..........h.P..@
+[ASL_Glove:/service000e/char000f]#   ab 29 7f 11 20 04 20                             .).. .          
+[ASL_Glove:/service000e/char000f]# [CHG] Device 4E:2D:57:46:E7:9B ManufacturerData.Key: 0x0075 (117)
+[ASL_Glove:/service000e/char000f]# [CHG] Device 4E:2D:57:46:E7:9B ManufacturerData.Value:
+[ASL_Glove:/service000e/char000f]#   0b 26 4d 87 0c 46 29 0b                          .&M..F).        
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 55 a3 86 01 00 00 00 00 e9 ac cb 8c 24 50 33  .U...........$P3
+[ASL_Glove:/service000e/char000f]#   29 1a 09 08 af 04 a0                             )......         
+[ASL_Glove:/service000e/char000f]# [CHG] Device 1A:2A:58:DF:4B:D7 RSSI: 0xffffffac (-84)
+[ASL_Glove:/service000e/char000f]# [CHG] Device 4D:BF:08:27:C3:00 RSSI: 0xffffffad (-83)
+[ASL_Glove:/service000e/char000f]# [NEW] Device 74:C7:23:9A:D5:FA 74-C7-23-9A-D5-FA
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 fa 29 88 01 00 00 00 00 e5 2c d6 1c 2d 54 3a  ..).......,..-T:
+[ASL_Glove:/service000e/char000f]#   5f 17 1e 08 cc 04 00                             _......         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 35 37 8b 01 00 00 00 00 e2 bc e5 44 2e 9c 36  .57.........D..6
+[ASL_Glove:/service000e/char000f]#   c3 12 58 fc 8a 04 a0                             ..X....         
+[ASL_Glove:/service000e/char000f]# [NEW] Device 4C:C7:8B:A3:F8:8E 4C-C7-8B-A3-F8-8E
+[ASL_Glove:/service000e/char000f]# [CHG] Device 5B:77:BF:F3:0D:23 RSSI: 0xffffffaa (-86)
+[ASL_Glove:/service000e/char000f]# [CHG] Device 5B:77:BF:F3:0D:23 TxPower: 0x000c (12)
+[ASL_Glove:/service000e/char000f]# [CHG] Device 5B:77:BF:F3:0D:23 ManufacturerData.Key: 0x004c (76)
+[ASL_Glove:/service000e/char000f]# [CHG] Device 5B:77:BF:F3:0D:23 ManufacturerData.Value:
+[ASL_Glove:/service000e/char000f]#   10 07 3d 1f 4d 4f 3f bb 08                       ..=.MO?..       
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 da bd 8c 01 00 00 00 00 de 7c ef c4 3e 4c 2c  ..........|..>L,
+[ASL_Glove:/service000e/char000f]#   61 1a d4 fe 7e 03 80                             a...~..         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 15 cb 8f 01 00 00 00 00 e0 d0 fd 38 39 74 43  ............89tC
+[ASL_Glove:/service000e/char000f]#   99 f9 6e 04 99 04 80                             ..n....         
+[ASL_Glove:/service000e/char000f]# [CHG] Device 4F:89:38:14:8C:54 ManufacturerData.Key: 0x004c (76)
+[ASL_Glove:/service000e/char000f]# [CHG] Device 4F:89:38:14:8C:54 ManufacturerData.Value:
+[ASL_Glove:/service000e/char000f]#   10 07 3c 1f 30 02 6e 63 78                       ..<.0.ncx       
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 ba 51 91 01 00 00 00 00 e1 94 03 94 40 ec 2f  ..Q..........@./
+[ASL_Glove:/service000e/char000f]#   de dc c6 fa 22 03 d0                             ...."..         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 f5 5e 94 01 00 00 00 00 ef 64 0a ec 38 00 1c  ..^.......d..8..
+[ASL_Glove:/service000e/char000f]#   b3 00 e1 ae 27 04 b0                             ....'..         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 9a e5 95 01 00 00 00 00 eb 14 19 a4 3c 68 0a  .............<h.
+[ASL_Glove:/service000e/char000f]#   63 f1 1d d2 a6 04 20                             c.....          
+[ASL_Glove:/service000e/char000f]# [CHG] Device 55:1B:DF:DD:E3:B5 ManufacturerData.Key: 0x004c (76)
+[ASL_Glove:/service000e/char000f]# [CHG] Device 55:1B:DF:DD:E3:B5 ManufacturerData.Value:
+[ASL_Glove:/service000e/char000f]#   10 07 31 1f f5 88 75 6e 48                       ..1...unH       
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 d5 f2 98 01 00 00 00 00 f0 d8 0e a0 43 cc 04  .............C..
+[ASL_Glove:/service000e/char000f]#   de d3 8e d3 e9 04 60                             ......`         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 7a 79 9a 01 00 00 00 00 f7 98 19 1c 45 d4 09  .zy..........E..
+[ASL_Glove:/service000e/char000f]#   73 d2 1c f7 54 03 f0                             s...T..         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 b5 86 9d 01 00 00 00 00 10 e4 0b 8c 3e f0 07  .............>..
+[ASL_Glove:/service000e/char000f]#   dc c6 cb 08 9d 04 a0                             .......         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 5a 0d 9f 01 00 00 00 00 1e 18 0e bc 31 00 15  .Z...........1..
+[ASL_Glove:/service000e/char000f]#   68 d9 ea 0d d3 03 c0                             h......         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 95 1a a2 01 00 00 00 00 1d ec 0c f4 39 e4 f8  .............9..
+[ASL_Glove:/service000e/char000f]#   4b 3e 2e 19 c4 04 80                             K>.....         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 3a a1 a3 01 00 00 00 00 16 48 ff 68 4d 50 f4  .:........H.hMP.
+[ASL_Glove:/service000e/char000f]#   35 e7 51 15 47 03 c0                             5.Q.G..         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 75 ae a6 01 00 00 00 00 2c b4 06 68 2f 24 f9  .u.......,..h/$.
+[ASL_Glove:/service000e/char000f]#   8b d7 d6 04 e0 04 60                             ......`         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 1a 35 a8 01 00 00 00 00 2f 9c 05 d4 24 30 f1  ..5....../...$0.
+[ASL_Glove:/service000e/char000f]#   0f d0 5c 0e 2a 04 20                             ..\.*.          
+[ASL_Glove:/service000e/char000f]# [CHG] Device 5A:F4:86:27:98:D5 RSSI: 0xffffffaa (-86)
+[ASL_Glove:/service000e/char000f]# [NEW] Device 41:58:D1:43:AE:62 41-58-D1-43-AE-62
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 55 42 ab 01 00 00 00 00 3b 60 f5 80 1a b4 f9  .UB......;`.....
+[ASL_Glove:/service000e/char000f]#   74 de d8 0e 5e 04 70                             t...^.p         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 fa c8 ac 01 00 00 00 00 3d 14 f2 48 0f 28 f9  .........=..H.(.
+[ASL_Glove:/service000e/char000f]#   03 d6 cf 09 22 04 20                             ....".          
+[ASL_Glove:/service000e/char000f]# [NEW] Device 77:29:FF:58:12:D0 77-29-FF-58-12-D0
+[ASL_Glove:/service000e/char000f]# [NEW] Device 75:93:0D:51:2C:5D 75-93-0D-51-2C-5D
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 35 d6 af 01 00 00 00 00 40 0c f2 80 00 cc f2  .5.......@......
+[ASL_Glove:/service000e/char000f]#   63 e0 c6 02 49 04 80                             c...I..         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 da 5c b1 01 00 00 00 00 3f a4 f1 60 f9 94 f3  ..\......?..`...
+[ASL_Glove:/service000e/char000f]#   72 ea 1f ff ed 03 d0                             r......         
+[ASL_Glove:/service000e/char000f]# [CHG] Device 76:63:FC:02:8B:81 ManufacturerData.Key: 0x004c (76)
+[ASL_Glove:/service000e/char000f]# [CHG] Device 76:63:FC:02:8B:81 ManufacturerData.Value:
+[ASL_Glove:/service000e/char000f]#   0c 0e 00 90 7b e3 64 95 1a a7 64 6d 5f 8f ea 29  ....{.d...dm_..)
+[ASL_Glove:/service000e/char000f]#   10 06 4b 19 e9 4b c5 38                          ..K..K.8        
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 15 6a b4 01 00 00 00 00 3c 80 f3 24 f4 c8 f0  ..j......<..$...
+[ASL_Glove:/service000e/char000f]#   b3 ea 14 ff 19 04 a0                             .......         
+[ASL_Glove:/service000e/char000f]# [DEL] Device 70:F2:5F:E0:D4:95 70-F2-5F-E0-D4-95
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 ba f0 b5 01 00 00 00 00 39 b8 f5 0c f0 24 f1  .........9....$.
+[ASL_Glove:/service000e/char000f]#   25 dd ce 02 4d 04 20                             %...M.          
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 f5 fd b8 01 00 00 00 00 33 10 f8 a8 da 8c fc  .........3......
+[ASL_Glove:/service000e/char000f]#   f2 e7 72 04 c2 04 a0                             ..r....         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 9a 84 ba 01 00 00 00 00 2d 94 f4 b4 d9 6c f5  .........-....l.
+[ASL_Glove:/service000e/char000f]#   49 dd 64 07 1f 03 90                             I.d....         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 d5 91 bd 01 00 00 00 00 22 54 f6 e4 ca f0 fa  ........."T.....
+[ASL_Glove:/service000e/char000f]#   87 d6 03 00 83 04 70                             ......p         
+[ASL_Glove:/service000e/char000f]# [CHG] Device 4D:97:C9:D2:97:77 RSSI: 0xffffffb1 (-79)
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 7a 18 bf 01 00 00 00 00 1b 54 f6 80 c3 50 ff  .z........T...P.
+[ASL_Glove:/service000e/char000f]#   bd e5 0a ff 09 04 20                             ......          
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 b5 25 c2 01 00 00 00 00 0e 88 fc 48 c1 f8 f4  ..%.........H...
+[ASL_Glove:/service000e/char000f]#   80 e3 3b fd e3 04 a0                             ..;....         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 5a ac c3 01 00 00 00 00 06 20 00 28 c2 04 f7  .Z........ .(...
+[ASL_Glove:/service000e/char000f]#   ce de f8 fd d1 04 00                             .......         
+[ASL_Glove:/service000e/char000f]# [DEL] Device 7F:DB:86:78:B0:43 7F-DB-86-78-B0-43
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 95 b9 c6 01 00 00 00 00 fc a4 ff 0c bb a4 f9  ................
+[ASL_Glove:/service000e/char000f]#   15 e1 d2 f8 cc 04 70                             ......p         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 3a 40 c8 01 00 00 00 00 f6 84 02 fc b6 ac 01  .:@.............
+[ASL_Glove:/service000e/char000f]#   be 02 4d fd f0 03 f0                             ..M....         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 75 4d cb 01 00 00 00 00 04 48 00 98 c1 08 03  .uM.......H.....
+[ASL_Glove:/service000e/char000f]#   0b 3b 4f 0c b1 04 a0                             .;O....         
+[ASL_Glove:/service000e/char000f]# [CHG] Device 5A:F4:86:27:98:D5 RSSI: 0xffffffb2 (-78)
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 1a d4 cc 01 00 00 00 00 0e ec ff 54 c9 64 0c  ............T.d.
+[ASL_Glove:/service000e/char000f]#   6a 35 f1 0f e9 03 b0                             j5.....         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 55 e1 cf 01 00 00 00 00 24 c8 f0 c0 d2 80 00  .U.......$......
+[ASL_Glove:/service000e/char000f]#   ae 15 e8 09 a1 04 80                             .......         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 fa 67 d1 01 00 00 00 00 28 10 ef e0 cf 80 06  ..g......(......
+[ASL_Glove:/service000e/char000f]#   83 0d 05 08 6b 04 20                             ....k.          
+[ASL_Glove:/service000e/char000f]# [CHG] Device F0:1A:A0:17:B0:48 RSSI: 0xffffffb6 (-74)
+[ASL_Glove:/service000e/char000f]# [CHG] Device F0:1A:A0:17:B0:48 ManufacturerData.Key: 0x011b (283)
+[ASL_Glove:/service000e/char000f]# [CHG] Device F0:1A:A0:17:B0:48 ManufacturerData.Value:
+[ASL_Glove:/service000e/char000f]#   08 48 b0 17 a0 1a f0 29 41 86 83 01 00 00 9b eb  .H.....)A.......
+[ASL_Glove:/service000e/char000f]#   00 00 ff                                         ...             
+[ASL_Glove:/service000e/char000f]# [DEL] Device 53:00:CF:D3:FD:2D 53-00-CF-D3-FD-2D
+[ASL_Glove:/service000e/char000f]# [DEL] Device 55:4C:99:09:EF:85 55-4C-99-09-EF-85
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 35 75 d4 01 00 00 00 00 30 10 ec a8 dc 04 17  .5u......0......
+[ASL_Glove:/service000e/char000f]#   ae 3c b0 0a 02 04 a0                             .<.....         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 da fb d5 01 00 00 00 00 33 7c e6 60 ea d4 1c  .........3|.`...
+[ASL_Glove:/service000e/char000f]#   a2 42 6b 07 ea 04 20                             .Bk...          
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 15 09 d9 01 00 00 00 00 34 50 e7 20 06 80 15  .........4P. ...
+[ASL_Glove:/service000e/char000f]#   ec 26 20 02 f1 04 80                             .& ....         
+[ASL_Glove:/service000e/char000f]# [CHG] Device 4D:97:C9:D2:97:77 RSSI: 0xffffffa8 (-88)
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 ba 8f da 01 00 00 00 00 34 08 e8 30 16 f8 14  .........4..0...
+[ASL_Glove:/service000e/char000f]#   df 29 9b 05 3b 03 d0                             .)..;..         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 f5 9c dd 01 00 00 00 00 2d a4 e0 38 16 40 1f  .........-..8.@.
+[ASL_Glove:/service000e/char000f]#   81 22 e4 27 fe 04 80                             .".'...         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 9a 23 df 01 00 00 00 00 26 54 dd 48 21 54 05  ..#......&T.H!T.
+[ASL_Glove:/service000e/char000f]#   23 1a 54 30 a5 04 40                             #.T0..@         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 d5 30 e2 01 00 00 00 00 17 18 c5 3c 22 d4 e3  ..0.........<"..
+[ASL_Glove:/service000e/char000f]#   db e3 43 31 d4 04 20                             ..C1..          
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 7a b7 e3 01 00 00 00 00 11 fc b9 d4 1e cc f4  .z..............
+[ASL_Glove:/service000e/char000f]#   29 f3 42 12 91 03 b0                             ).B....         
+[ASL_Glove:/service000e/char000f]# [NEW] Device 70:7A:95:BF:A4:78 70-7A-95-BF-A4-78
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 b5 c4 e6 01 00 00 00 00 0c ec c7 e4 0f a4 e7  ................
+[ASL_Glove:/service000e/char000f]#   38 f4 8b 01 c8 04 70                             8.....p         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 5a 4b e8 01 00 00 00 00 0a c4 c8 dc 0c a4 e5  .ZK.............
+[ASL_Glove:/service000e/char000f]#   4a f7 60 13 51 04 30                             J.`.Q.0         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 95 58 eb 01 00 00 00 00 08 88 bf 24 fa dc d4  ..X.........$...
+[ASL_Glove:/service000e/char000f]#   5d ec 14 06 54 04 60                             ]...T.`         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 3a df ec 01 00 00 00 00 06 44 c2 f0 f0 b4 da  .:........D.....
+[ASL_Glove:/service000e/char000f]#   04 ec c7 06 19 04 20                             ......          
+[ASL_Glove:/service000e/char000f]# [NEW] Device 4B:41:75:4A:F2:F6 4B-41-75-4A-F2-F6
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 75 ec ef 01 00 00 00 00 01 90 c8 e8 d7 30 cd  .u............0.
+[ASL_Glove:/service000e/char000f]#   54 e3 ca 07 37 04 f0                             T...7..         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 1a 73 f1 01 00 00 00 00 f8 d4 cd b0 d7 a4 d1  ..s.............
+[ASL_Glove:/service000e/char000f]#   98 ee b3 05 2e 04 20                             ......          
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 55 80 f4 01 00 00 00 00 f7 74 db fc ca 08 e4  .U........t.....
+[ASL_Glove:/service000e/char000f]#   03 f4 fb fb 76 04 60                             ....v.`         
+[ASL_Glove:/service000e/char000f]# [CHG] Device 5A:F4:86:27:98:D5 RSSI: 0xffffffaa (-86)
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 fa 06 f6 01 00 00 00 00 f0 48 e2 b0 d0 5c df  ..........H...\.
+[ASL_Glove:/service000e/char000f]#   d8 f2 a1 fb 95 04 20                             ......          
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 35 14 f9 01 00 00 00 00 ef 40 f0 64 c6 c8 dc  .5........@.d...
+[ASL_Glove:/service000e/char000f]#   8b f6 22 01 e8 04 60                             .."...`         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 da 9a fa 01 00 00 00 00 ee 08 f2 94 be 8c f7  ................
+[ASL_Glove:/service000e/char000f]#   b2 00 e6 fa d1 03 c0                             .......         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 15 a8 fd 01 00 00 00 00 f7 0c e1 2c c9 80 6c  ............,..l
+[ASL_Glove:/service000e/char000f]#   4a 2a e8 fd 07 04 60                             J*....`         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 ba 2e ff 01 00 00 00 00 fe e0 cf 24 d6 30 58  ............$.0X
+[ASL_Glove:/service000e/char000f]#   b2 21 84 00 5a 04 40                             .!..Z.@         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 f5 3b 02 02 00 00 00 00 06 b8 c0 e8 f3 54 52  ..;...........TR
+[ASL_Glove:/service000e/char000f]#   a6 23 1f fa e7 04 b0                             .#.....         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 9a c2 03 02 00 00 00 00 06 d8 c3 a8 05 f4 5d  ...............]
+[ASL_Glove:/service000e/char000f]#   c8 2a 18 fa 14 04 20                             .*....          
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 d5 cf 06 02 00 00 00 00 ff 58 cf 6c 25 44 4a  ..........X.l%DJ
+[ASL_Glove:/service000e/char000f]#   8b 3d 6f 05 4c 04 60                             .=o.L.`         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 7a 56 08 02 00 00 00 00 f4 ec dd 6c 2f b4 47  .zV.........l/.G
+[ASL_Glove:/service000e/char000f]#   79 34 d1 11 01 04 40                             y4....@         
+[ASL_Glove:/service000e/char000f]# [CHG] Device F0:1A:A0:17:B1:3C ManufacturerData.Key: 0x011b (283)
+[ASL_Glove:/service000e/char000f]# [CHG] Device F0:1A:A0:17:B1:3C ManufacturerData.Value:
+[ASL_Glove:/service000e/char000f]#   08 3c b1 17 a0 1a f0 29 41 86 83 01 00 00 bc 4c  .<.....)A......L
+[ASL_Glove:/service000e/char000f]#   01 00 ff                                         ...             
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 b5 63 0b 02 00 00 00 00 e2 20 f5 04 3f 4c 30  ..c....... ..?L0
+[ASL_Glove:/service000e/char000f]#   c9 0f be fc 51 04 70                             ....Q.p         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 5a ea 0c 02 00 00 00 00 e6 18 f7 8c 40 b0 1f  .Z...........@..
+[ASL_Glove:/service000e/char000f]#   dc f8 8d ea 1c 04 20                             ......          
+[ASL_Glove:/service000e/char000f]# [NEW] Device 78:5F:D6:14:D6:1A 78-5F-D6-14-D6-1A
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 95 f7 0f 02 00 00 00 00 de 78 06 c0 43 70 18  ..........x..Cp.
+[ASL_Glove:/service000e/char000f]#   81 12 45 e9 69 04 60                             ..E.i.`         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 3a 7e 11 02 00 00 00 00 e3 34 f7 fc 3c c8 16  .:~.......4..<..
+[ASL_Glove:/service000e/char000f]#   6d f8 81 f2 eb 03 90                             m......         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 75 8b 14 02 00 00 00 00 db 78 05 00 3b a0 24  .u........x..;.$
+[ASL_Glove:/service000e/char000f]#   9e 1c 79 f3 c1 04 b0                             ..y....         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 1a 12 16 02 00 00 00 00 cf 28 07 44 49 74 18  ..........(.DIt.
+[ASL_Glove:/service000e/char000f]#   4d 11 e7 ff d4 04 20                             M.....          
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 55 1f 19 02 00 00 00 00 da e4 13 a8 3a d4 00  .U...........:..
+[ASL_Glove:/service000e/char000f]#   b9 d4 c3 f5 3b 04 40                             ....;.@         
+[ASL_Glove:/service000e/char000f]# [CHG] Device 4D:97:C9:D2:97:77 RSSI: 0xffffffb1 (-79)
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 fa a5 1a 02 00 00 00 00 e1 ec 0a 74 37 74 f7  ............t7t.
+[ASL_Glove:/service000e/char000f]#   ff cd 1d f3 4d 03 c0                             ....M..         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 35 b3 1d 02 00 00 00 00 06 44 0b fc 3e 50 00  .5........D..>P.
+[ASL_Glove:/service000e/char000f]#   59 99 b9 ec b3 04 60                             Y.....`         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 da 39 1f 02 00 00 00 00 13 2c 14 8c 2e 08 06  ..9.......,.....
+[ASL_Glove:/service000e/char000f]#   4c f0 7c f9 d2 04 20                             L.|...          
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 15 47 22 02 00 00 00 00 1d a4 04 10 36 ec ec  ..G".........6..
+[ASL_Glove:/service000e/char000f]#   0b d1 27 12 9f 04 80                             ..'....         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 ba cd 23 02 00 00 00 00 26 f0 fe cc 35 68 f8  ...#.....&...5h.
+[ASL_Glove:/service000e/char000f]#   da e2 a0 10 96 04 40                             ......@         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 f5 da 26 02 00 00 00 00 27 3c f9 50 27 44 f6  ...&.....'<.P'D.
+[ASL_Glove:/service000e/char000f]#   01 13 48 34 4a 04 60                             ..H4J.`         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 9a 61 28 02 00 00 00 00 1d a4 e4 18 28 10 08  ..a(.........(..
+[ASL_Glove:/service000e/char000f]#   78 3b f8 31 06 03 c0                             x;.1...         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 d5 6e 2b 02 00 00 00 00 f0 9c f4 a0 35 64 0c  ..n+.........5d.
+[ASL_Glove:/service000e/char000f]#   ce 7f ff 07 91 04 20                             ......          
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 7a f5 2c 02 00 00 00 00 d2 dc f4 64 50 3c 09  .z.,........dP<.
+[ASL_Glove:/service000e/char000f]#   0c 54 60 08 03 03 f0                             .T`....         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 b5 02 30 02 00 00 00 00 d0 40 f5 f4 2c f8 f1  ...0......@..,..
+[ASL_Glove:/service000e/char000f]#   34 10 48 07 63 04 80                             4.H.c..         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 5a 89 31 02 00 00 00 00 dd 58 ee 24 32 6c ea  .Z.1......X.$2l.
+[ASL_Glove:/service000e/char000f]#   43 10 65 0e 1d 03 f0                             C.e....         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 95 96 34 02 00 00 00 00 de 68 e8 f0 36 ac 19  ...4......h..6..
+[ASL_Glove:/service000e/char000f]#   df 00 4a ea c4 04 b0                             ..J....         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 3a 1d 36 02 00 00 00 00 d8 c0 ed c8 36 10 10  .:.6.........6..
+[ASL_Glove:/service000e/char000f]#   26 d4 36 cb fb 03 c0                             &.6....         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 75 2a 39 02 00 00 00 00 e6 68 e2 30 3e f0 f8  .u*9......h.0>..
+[ASL_Glove:/service000e/char000f]#   72 b0 c2 cd a7 04 80                             r......         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 1a b1 3a 02 00 00 00 00 f2 20 e9 b8 2f 30 f2  ...:...... ../0.
+[ASL_Glove:/service000e/char000f]#   e6 a6 ea df 04 03 d0                             .......         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 55 be 3d 02 00 00 00 00 fb f4 ea 78 30 a8 0d  .U.=........x0..
+[ASL_Glove:/service000e/char000f]#   18 3f a4 46 6c 04 20                             .?.Fl.          
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 fa 44 3f 02 00 00 00 00 f7 b8 ec 78 36 34 00  ..D?........x64.
+[ASL_Glove:/service000e/char000f]#   07 59 6a 41 ad 03 c0                             .YjA...         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 35 52 42 02 00 00 00 00 e7 38 e3 30 42 d8 eb  .5RB......8.0B..
+[ASL_Glove:/service000e/char000f]#   14 e9 aa da e9 04 60                             ......`         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 da d8 43 02 00 00 00 00 dc dc e2 34 5b 04 f0  ...C........4[..
+[ASL_Glove:/service000e/char000f]#   bf bf 0a c0 63 04 20                             ....c.          
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 15 e6 46 02 00 00 00 00 f8 20 e9 a8 32 a8 0c  ...F...... ..2..
+[ASL_Glove:/service000e/char000f]#   8f e1 2a dc b9 04 b0                             ..*....         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 ba 6c 48 02 00 00 00 00 f7 a8 f8 20 26 cc fb  ..lH........ &..
+[ASL_Glove:/service000e/char000f]#   70 3e 94 09 b0 04 30                             p>....0         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 f5 79 4b 02 00 00 00 00 f3 48 e7 a0 45 68 f7  ..yK......H..Eh.
+[ASL_Glove:/service000e/char000f]#   14 ed a0 1b 48 04 a0                             ....H..         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 9a 00 4d 02 00 00 00 00 fd 54 e6 ac 3d 2c fa  ...M......T..=,.
+[ASL_Glove:/service000e/char000f]#   df e2 3b fd fd 03 f0                             ..;....         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 d5 0d 50 02 00 00 00 00 03 78 fc a8 29 80 18  ...P......x..)..
+[ASL_Glove:/service000e/char000f]#   81 0d 75 00 2d 04 20                             ..u.-.          
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 7a 94 51 02 00 00 00 00 ff 74 ed 90 24 6c 1c  .z.Q......t..$l.
+[ASL_Glove:/service000e/char000f]#   09 fb 30 08 a6 03 f0                             ..0....         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 b5 a1 54 02 00 00 00 00 f6 cc e5 14 54 2c 06  ...T.........T,.
+[ASL_Glove:/service000e/char000f]#   f2 e6 78 f5 cb 04 80                             ..x....         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 5a 28 56 02 00 00 00 00 fc 20 fc 74 3b 38 12  .Z(V...... .t;8.
+[ASL_Glove:/service000e/char000f]#   5b 0f 05 fc 53 03 d0                             [...S..         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 95 35 59 02 00 00 00 00 f6 9c fc 60 3d 10 03  ..5Y........`=..
+[ASL_Glove:/service000e/char000f]#   60 03 64 fa 72 04 60                             `.d.r.`         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 3a bc 5a 02 00 00 00 00 f5 b8 fb 98 46 40 03  .:.Z.........F@.
+[ASL_Glove:/service000e/char000f]#   a6 03 04 fb 8f 04 20                             ......          
+[ASL_Glove:/service000e/char000f]# [DEL] Device 65:61:F2:0F:43:4E 65-61-F2-0F-43-4E
+[ASL_Glove:/service000e/char000f]# [DEL] Device 49:29:5E:E7:15:7E 49-29-5E-E7-15-7E
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   00 75 c9 5d 02 00 00 00 00 80 00 c8 e8 7f ff 5c  .u.]...........\
+[ASL_Glove:/service000e/char000f]#   e8 7e 9f f3 2d 04 70                             .~..-.p         
+[ASL_Glove:/service000e/char000f]# [CHG] Attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f Value:
+[ASL_Glove:/service000e/char000f]#   01 1a 50 5f 02 00 00 00 00 fe 34 ff 58 30 64 00  ..P_......4.X0d.
+[ASL_Glove:/service000e/char000f]#   9c fd b0 ff 9e 03 d0  
