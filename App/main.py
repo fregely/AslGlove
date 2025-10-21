@@ -2,7 +2,9 @@ import argparse
 import asyncio
 import logging
 import struct
+import time
 from typing import Optional
+from pathlib import Path
 from bleak import BleakClient, BleakScanner
 from bleak.backends.characteristic import BleakGATTCharacteristic
 import matplotlib.pyplot as plt
@@ -20,6 +22,10 @@ az_data = deque(maxlen=MAX_POINTS)
 gx_data = deque(maxlen=MAX_POINTS)
 gy_data = deque(maxlen=MAX_POINTS)
 gz_data = deque(maxlen=MAX_POINTS)
+
+# Recording state
+recording_file = None
+packet_count = 0
 
 # --- Plot setup ---
 plt.ion()
@@ -65,12 +71,14 @@ class Args(argparse.Namespace):
     macos_use_bdaddr: bool
     characteristic: str
     debug: bool
+    record: Optional[str]
+    playback: Optional[str]
+    playback_speed: float
 
 
-# ====== Notification Handler ======
-def notification_handler(characteristic: BleakGATTCharacteristic, data: bytearray):
+def process_packet(data: bytearray, source: str = "BLE"):
     """
-    Handles BLE notifications from the ESP32 and updates live plot.
+    Process a single IMU packet and update the plot.
     
     Expected packet structure (23 bytes total):
     - 1 byte: channel (uint8_t)
@@ -84,7 +92,9 @@ def notification_handler(characteristic: BleakGATTCharacteristic, data: bytearra
         - 2 bytes: gyro Y
         - 2 bytes: gyro Z
     """
-    logger.debug(f"Received {len(data)} bytes: {data.hex()}")
+    global packet_count
+    
+    logger.debug(f"[{source}] Received {len(data)} bytes: {data.hex()}")
     
     try:
         # Check packet length
@@ -104,7 +114,7 @@ def notification_handler(characteristic: BleakGATTCharacteristic, data: bytearra
         temp_raw = raw_values[3]
         gx, gy, gz = raw_values[4], raw_values[5], raw_values[6]
         
-        logger.info(f"Ch{channel} @{timestamp_us}µs → Accel({ax},{ay},{az}) Gyro({gx},{gy},{gz})")
+        logger.info(f"[{source}] Ch{channel} @{timestamp_us}µs → Accel({ax},{ay},{az}) Gyro({gx},{gy},{gz})")
         
         # Append data to queues for live plotting
         ax_data.append(ax)
@@ -115,13 +125,127 @@ def notification_handler(characteristic: BleakGATTCharacteristic, data: bytearra
         gz_data.append(gz)
         
         update_plot()
+        packet_count += 1
         
     except Exception as e:
         logger.error(f"⚠️ Failed to parse IMU packet: {e}")
 
 
+# ====== Notification Handler ======
+def notification_handler(characteristic: BleakGATTCharacteristic, data: bytearray):
+    """Handles BLE notifications and optionally records them."""
+    global recording_file
+    
+    # Record packet if recording is enabled
+    if recording_file is not None:
+        try:
+            # Write packet length (2 bytes) + packet data
+            recording_file.write(struct.pack('<H', len(data)))
+            recording_file.write(data)
+            recording_file.flush()  # Ensure data is written immediately
+        except Exception as e:
+            logger.error(f"Failed to write packet to file: {e}")
+    
+    # Process the packet normally
+    process_packet(data, source="BLE")
+
+
+# ====== Recording Functions ======
+def start_recording(filename: str):
+    """Start recording packets to a file."""
+    global recording_file, packet_count
+    
+    filepath = Path(filename)
+    recording_file = open(filepath, 'wb')
+    packet_count = 0
+    
+    # Write file header
+    header = b'IMU_REC\x01'  # Magic string + version
+    recording_file.write(header)
+    recording_file.flush()
+    
+    logger.info(f"📹 Recording started: {filepath.absolute()}")
+
+
+def stop_recording():
+    """Stop recording and close the file."""
+    global recording_file, packet_count
+    
+    if recording_file is not None:
+        recording_file.close()
+        logger.info(f"⏹️  Recording stopped: {packet_count} packets saved")
+        recording_file = None
+
+
+# ====== Playback Functions ======
+async def playback_from_file(filename: str, speed: float = 1.0):
+    """Play back recorded packets from a file."""
+    global packet_count
+    
+    filepath = Path(filename)
+    if not filepath.exists():
+        logger.error(f"❌ Playback file not found: {filepath}")
+        return
+    
+    logger.info(f"▶️  Starting playback from: {filepath.absolute()}")
+    packet_count = 0
+    
+    with open(filepath, 'rb') as f:
+        # Read and verify header
+        header = f.read(8)
+        if header != b'IMU_REC\x01':
+            logger.error("❌ Invalid file format (missing or wrong header)")
+            return
+        
+        logger.info(f"✅ Valid recording file, playing at {speed}x speed")
+        
+        last_timestamp = None
+        
+        try:
+            while True:
+                # Read packet length
+                length_bytes = f.read(2)
+                if len(length_bytes) < 2:
+                    break  # End of file
+                
+                packet_length = struct.unpack('<H', length_bytes)[0]
+                
+                # Read packet data
+                packet_data = f.read(packet_length)
+                if len(packet_data) < packet_length:
+                    logger.warning("⚠️ Incomplete packet at end of file")
+                    break
+                
+                # Extract timestamp for timing
+                if len(packet_data) >= 9:
+                    timestamp_us = struct.unpack_from('<Q', packet_data, 1)[0]
+                    
+                    # Calculate delay based on timestamps
+                    if last_timestamp is not None and speed > 0:
+                        delay = (timestamp_us - last_timestamp) / 1_000_000.0  # Convert to seconds
+                        delay = delay / speed  # Adjust for playback speed
+                        if delay > 0:
+                            await asyncio.sleep(delay)
+                    
+                    last_timestamp = timestamp_us
+                
+                # Process the packet
+                process_packet(bytearray(packet_data), source="PLAYBACK")
+                
+        except KeyboardInterrupt:
+            logger.info("🛑 Playback stopped by user")
+        
+        logger.info(f"✅ Playback complete: {packet_count} packets played")
+
+
 # ====== Main BLE Routine ======
 async def main(args: Args):
+    # Handle playback mode
+    if args.playback:
+        await playback_from_file(args.playback, args.playback_speed)
+        return
+    
+    # Normal BLE mode
     logger.info("🔍 Starting Bluetooth scan...")
 
     if args.address:
@@ -140,6 +264,10 @@ async def main(args: Args):
         return
 
     logger.info(f"✅ Found device: {device.name} [{device.address}]")
+
+    # Start recording if requested
+    if args.record:
+        start_recording(args.record)
 
     async with BleakClient(device) as client:
         if not client.is_connected:
@@ -166,12 +294,30 @@ async def main(args: Args):
             logger.info("🛑 Stopping notifications...")
         finally:
             await client.stop_notify(args.characteristic)
+            stop_recording()  # Stop recording if active
             logger.info("🔌 Disconnected cleanly.")
 
 
 # ====== CLI Argument Setup ======
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="BLE Notification Receiver for ASL Glove")
+    parser = argparse.ArgumentParser(
+        description="BLE IMU Data Receiver with Recording/Playback",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Live streaming (no recording)
+  python main.py
+  
+  # Live streaming + record to file
+  python main.py --record test_data.imu
+  
+  # Playback from file
+  python main.py --playback test_data.imu
+  
+  # Playback at 2x speed
+  python main.py --playback test_data.imu --playback-speed 2.0
+        """
+    )
 
     parser.add_argument(
         "--name",
@@ -192,7 +338,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--characteristic",
-        metavar="<notify uuid>",
+        metavar="<uuid>",
         default=DEFAULT_CHAR_UUID,
         help=f"UUID of characteristic to subscribe to (default: {DEFAULT_CHAR_UUID})",
     )
@@ -201,6 +347,25 @@ if __name__ == "__main__":
         "--debug",
         action="store_true",
         help="Enable debug logging output",
+    )
+    parser.add_argument(
+        "--record",
+        metavar="<filename>",
+        default=None,
+        help="Record packets to file while streaming (e.g., test_data.imu)",
+    )
+    parser.add_argument(
+        "--playback",
+        metavar="<filename>",
+        default=None,
+        help="Play back recorded packets from file (instead of live BLE)",
+    )
+    parser.add_argument(
+        "--playback-speed",
+        metavar="<speed>",
+        type=float,
+        default=1.0,
+        help="Playback speed multiplier (default: 1.0, use 0 for no delay)",
     )
 
     args = parser.parse_args(namespace=Args())
