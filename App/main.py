@@ -87,7 +87,6 @@ def process_packet(data: bytearray, source: str = "BLE"):
         - 2 bytes: accel X (high, low) - big-endian int16
         - 2 bytes: accel Y
         - 2 bytes: accel Z
-        - 2 bytes: temperature
         - 2 bytes: gyro X
         - 2 bytes: gyro Y
         - 2 bytes: gyro Z
@@ -98,8 +97,8 @@ def process_packet(data: bytearray, source: str = "BLE"):
     
     try:
         # Check packet length
-        if len(data) != 23:
-            logger.warning(f"⚠️ Expected 23 bytes, got {len(data)}")
+        if len(data) != 21:
+            logger.warning(f"⚠️ Expected 21 bytes, got {len(data)}")
             return
         
         # Unpack the packet header
@@ -108,11 +107,10 @@ def process_packet(data: bytearray, source: str = "BLE"):
         
         # Unpack the 14 bytes of raw IMU data (big-endian int16)
         # ICM-20948 stores data in big-endian format (high byte first)
-        raw_values = struct.unpack_from('>7h', data, 9)  # 7 signed 16-bit big-endian
+        raw_values = struct.unpack_from('>6h', data, 9)  # 7 signed 16-bit big-endian
         
-        ax, ay, az = raw_values[0], raw_values[1], raw_values[2]
-        temp_raw = raw_values[3]
-        gx, gy, gz = raw_values[4], raw_values[5], raw_values[6]
+        ax, ay, az = raw_values[0], raw_values[1], raw_values[2]  # Accel
+        gx, gy, gz = raw_values[3], raw_values[4], raw_values[5]  # Gyro  
         
         logger.info(f"[{source}] Ch{channel} @{timestamp_us}µs → Accel({ax},{ay},{az}) Gyro({gx},{gy},{gz})")
         

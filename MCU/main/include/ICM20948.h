@@ -84,6 +84,8 @@ typedef struct {
 esp_err_t imu_read_reg(uint8_t channel, uint8_t reg_addr, uint8_t *data, size_t len);
 esp_err_t imu_write_reg(uint8_t channel, uint8_t reg_addr, uint8_t data);
 esp_err_t imu_device_init(i2c_master_bus_handle_t bus_handle, uint32_t scl_speed_hz);
+esp_err_t imu_data_get(uint8_t channel, uint8_t raw_data[12]);
+
 //add something to change and track the banks, for now itll just be in bank 1
 
 

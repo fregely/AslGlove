@@ -1,6 +1,7 @@
 #ifndef IMU_I2C_H
 #define IMU_I2C_H
 
+#include <stdint.h>
 
 #define TAG "IMU_I2C"
 
@@ -14,6 +15,8 @@
 #define I2C_MASTER_TIMEOUT_MS       1000
 
 #define MAX_IMUS 6  // Maximum number of IMUs connected via TCA9548A multiplexer
+
+
 
 void start_imu_task(void);
 

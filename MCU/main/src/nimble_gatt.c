@@ -212,71 +212,49 @@ void gatt_subscribe_cb(struct ble_gap_event *event)
  int gatt_init(void) {
     /* Local variables */
     int rc;
-    ESP_LOGI(TAG, "Kill youself 1");
+    ESP_LOGD(TAG, "Initializing GATT server");
     /* 1. GATT service initialization */
     ble_svc_gatt_init();
 
-    ESP_LOGI(TAG, "Kill youself 2");
 
     /* 2. Update GATT services counter */
     rc = ble_gatts_count_cfg(gatt_svcs);
     if (rc != 0) {
         
-        ESP_LOGI(TAG, "Kill youself 3");
+        ESP_LOGD(TAG, "Gatt services count failed");
         return rc;
     }
-    ESP_LOGI(TAG, "Kill youself 4");
+    ESP_LOGD(TAG, "");
 
 
     /* 3. Add GATT services */
     rc = ble_gatts_add_svcs(gatt_svcs);
-    ESP_LOGI(TAG, "Kill youself 5");
-
     if (rc != 0) {
-        ESP_LOGI(TAG, "Kill youself 6");
-
+        ESP_LOGD(TAG, "gatt services addition failed");
         return rc;
     }
-    ESP_LOGI(TAG, "Kill youself ");
-
-
     return 0;
 }
 
-/* Utility: send IMU notification if subscribed. Use from your IMU task. */
-int gatt_send_imu_notification(const uint8_t *data, size_t len)
-{
+int gatt_send_notification(const uint8_t *data, size_t len) {
     if (!imu_notify_enabled || imu_conn_handle == BLE_HS_CONN_HANDLE_NONE) {
-        return BLE_HS_ENOTCONN;
+        return -1; // Notifications not enabled or no connection
+    }
+    // Convert data to os_mbuf, which is the format NimBLE uses for sending data, 
+    struct os_mbuf *om = ble_hs_mbuf_from_flat(data, len);
+    if (om == NULL) {
+        return -1; // Failed to allocate mbuf
     }
 
-    struct os_mbuf *om = ble_hs_mbuf_from_flat((const void *)data, len);
-    if (!om) return BLE_HS_ENOMEM;
-
-    int rc = ble_gattc_notify_custom(imu_conn_handle, imu_data_handle, om);
+    int rc = ble_gatts_notify_custom(imu_conn_handle, imu_data_handle, om);
     if (rc != 0) {
-        ESP_LOGW(TAG, "ble_gattc_notify_custom rc=%d", rc);
+        ESP_LOGE(TAG, "Failed to send IMU notification: %d", rc);
+        // os_mbuf_free_chain(om); // Free mbuf on failure dont need to do this, NimBLE handles it
+        return rc;
     }
-    return rc;
+
+    return 0; // Success
 }
 
-/* Add this task function to your code */
-void imu_data_task(void *param) {
-    uint8_t dummy_data[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06}; // Example IMU data
-    int counter = 0;
-    
-    while (1) {
-        // Only send if someone is subscribed
-        if (imu_notify_enabled && imu_conn_handle != BLE_HS_CONN_HANDLE_NONE) {
-            // Increment counter to show changing data
-            dummy_data[0] = counter++;
-            
-            int rc = gatt_send_imu_notification(dummy_data, sizeof(dummy_data));
-            if (rc == 0) {
-                ESP_LOGI(TAG, "Sent IMU notification: %d", counter-1);
-            }
-        }
-        
-        vTaskDelay(pdMS_TO_TICKS(1000)); // Send every 1 second
-    }
-}
+
+

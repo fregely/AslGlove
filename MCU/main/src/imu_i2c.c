@@ -3,10 +3,11 @@
 #include "ICM20948.h"
 #include "common.h"
 #include "driver/i2c_master.h"
+#include "imu_packet.h"
 
 
 static i2c_master_bus_handle_t i2c_bus;
-
+QueueHandle_t imu_data_queue = NULL;
 
 
 static void i2c_master_init(void)
@@ -27,40 +28,50 @@ static void i2c_master_init(void)
     test_multiplexer_detection();
 }
 
-
-
 static void imu_task(void *param) {
-    uint8_t whoami = 0;
-    
-        
     // Wake up all IMUs
     for(uint8_t ch = 0; ch < MAX_IMUS; ch++) {
         if (imu_write_reg(ch, ICM20948_PWR_MGMT_1, 0x01) == ESP_OK) {
             ESP_LOGI(TAG, "IMU on channel %d woken up", ch);
         }
-        vTaskDelay(pdMS_TO_TICKS(100));
-        
         if (imu_write_reg(ch, ICM20948_PWR_MGMT_2, 0x00) == ESP_OK) {
             ESP_LOGI(TAG, "IMU on channel %d sensors enabled", ch);
         }
     }
     
     while (1) {
-        for (uint8_t ch = 0; ch < MAX_IMUS; ch++) {
-            if (imu_read_reg(ch, ICM20948_WHO_AM_I, &whoami, 1) == ESP_OK) {
-                ESP_LOGI(TAG, "IMU on channel %d WHO_AM_I = 0x%X", ch, whoami);
+        // Read data from each IMU channel
+        for(uint8_t ch = 0; ch < MAX_IMUS; ch++) {
+            imu_packet_t packet;
+            packet.timestamp_us = esp_timer_get_time();
+            packet.channel = ch;
+            if (imu_data_get(ch, packet.raw_data) == ESP_OK) {
+                ESP_LOGD(TAG, "Getting IMU Raw data from IMU: %d", ch);
+                // Send the packet to the queue
+                if (xQueueSend(imu_data_queue, &packet, pdMS_TO_TICKS(100)) != pdTRUE) {
+                    ESP_LOGE(TAG, "Failed to send IMU data to queue");
+                }
+                        vTaskDelay(pdMS_TO_TICKS(100));
             } else {
-                ESP_LOGW(TAG, "Failed to read IMU on channel %d", ch);
+                ESP_LOGD(TAG, "Failed to read data from IMU on channel %d", ch);
             }
+             // Small delay between IMU reads to avoid bus congestion
+
         }
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        vTaskDelay(pdMS_TO_TICKS(100)); // Adjust based on desired sampling rate
     }
 }
 
 
 void start_imu_task(void) {
-    
     i2c_master_init();
     
+    // Create the queue
+    imu_data_queue = xQueueCreate(IMU_QUEUE_SIZE, sizeof(imu_packet_t));
+    if (imu_data_queue == NULL) {
+        ESP_LOGE(TAG, "Failed to create IMU data queue");
+        return;
+    }
+
     xTaskCreate(imu_task, "imu_task", 2048, NULL, 5, NULL);
 }
