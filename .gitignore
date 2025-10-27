@@ -21,3 +21,65 @@ env/
 *.log
 *.env
 .env.*
+idf_py_stdout_*
+idf_py_stderr_*
+connect*
+gdbinit*
+symbols*
+prefix_map*
+py_extensions*
+partition-table.bin
+
+# --- ESP-IDF build artifacts ---
+build/
+sdkconfig
+sdkconfig.old
+CMakeCache.txt
+cmake_install.cmake
+CMakeFiles/
+CMakeLists.txt
+cmake_install.cmake
+CMakeCache.txt
+install_manifest.txt
+compile_commands.json
+*.cmake
+*.map
+*.elf
+*.bin
+*.log
+*.hex
+
+# --- ESP-IDF intermediate files ---
+*.obj
+*.o
+*.a
+*.pyc
+*.pyo
+__pycache__/
+idf_py_stdout_*
+idf_py_stderr_*
+prefix_map
+connect*
+symbols*
+py_extensions*
+wps.c.obj
+
+# --- Partition table ---
+partition-table.bin
+partition-table.csv
+partition-table.offset
+
+# --- Flash binaries ---
+*.bin
+*.hex
+
+# --- Editor / IDE specific ---
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- Python virtual environments ---
+.venv/
+env/
+venv/

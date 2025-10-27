@@ -1,7 +1,8 @@
 """
 Live blob detection with OpenCV for ASL Glove CV work.
 Captures frames, thresholds bright IR markers, and highlights blobs in real time.
-Logs FPS, frame count, and blob coordinates to a timestamped CSV file.
+Synchronizes frame capture with ESP32 LED flashing via serial messages.
+Logs FPS, frame count, LED index, and blob coordinates to a timestamped CSV file.
 """
 
 # Suppress linter false positives about cv2 dynamic attributes
@@ -9,15 +10,46 @@ Logs FPS, frame count, and blob coordinates to a timestamped CSV file.
 
 import time
 import csv
+from typing import Any
 from datetime import datetime
+import serial  # type: ignore
+import serial.tools.list_ports  # type: ignore
 import numpy as np
 import cv2
 
+def find_esp32_port() -> str | Any:
+    """
+    Automatically detect the ESP32 serial port.
+    Scans connected devices for typical ESP32 identifiers like "usbserial" or "ttyUSB".
+    Returns the detected port string or None if not found.
+    """
+    ports = serial.tools.list_ports.comports()
+    for port in ports:
+        if (
+            "usbserial" in port.device.lower()
+            or "ttyusb" in port.device.lower()
+            or "ttyacm" in port.device.lower()
+            or "esp" in port.description.lower()
+        ):
+            print(f"✅ Found ESP32 at {port.device}")
+            return port.device
+    print("⚠️ ESP32 not found — connect and try again.")
+    return None
 
 def main() -> None:
     """Main loop to capture frames, detect blobs, and log data."""
 
     print("OpenCV version:", cv2.__version__)
+    
+    # --- Automatically find the ESP32 serial port ---
+    port = find_esp32_port()
+    if port is None:
+        return
+
+    # --- Serial setup (update port name if needed) ---
+    ser = serial.Serial(port, 115200, timeout=1)
+    time.sleep(2)  # Give the ESP32 time to reset after serial connect
+    print("🔌 Serial connected to ESP32")
 
     # --- Camera setup ---
     cap = cv2.VideoCapture(0)  # Open default camera (index 0)
@@ -41,20 +73,38 @@ def main() -> None:
     prev_time = time.time()
     fps = 0.0
     frame_count = 0
+    led_index = 0  # Which LED was active during this frame
 
     # --- Timestamped CSV Logger ---
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     log_filename = f"detections_log_{timestamp}.csv"
     log_file = open(log_filename, mode="w", newline="", encoding="utf-8")
     csv_writer = csv.writer(log_file)
-    csv_writer.writerow(["Frame", "Timestamp", "FPS", "BlobCount", "BlobCenters"])
+    csv_writer.writerow(["Frame", "Timestamp", "FPS", "LED", "BlobCount", "BlobCenters"])
     print(f"📁 Logging to {log_filename}")
     
     # --- Setup OpenCV display window ---
     cv2.namedWindow("Detections", cv2.WINDOW_NORMAL)
     cv2.resizeWindow("Detections", 1280, 720)
 
+    # --- Kick off LED sequence ---
+    ser.write(b"START\n")
+    
     while True:
+         # --- Wait for ESP32 sync message ---
+        line = ser.readline().decode(errors="ignore").strip()
+        if not line:
+            continue
+
+        # Expecting lines like "READY:1" meaning LED 1 just turned on
+        if line.startswith("READY"):
+            try:
+                led_index = int(line.split(":")[1])
+            except (IndexError, ValueError):
+                led_index = -1
+
+            print(f"📸 Capturing frame for LED {led_index}")
+            
         # --- Capture frame ---
         ret, frame = cap.read()
         if not ret:
@@ -126,8 +176,12 @@ def main() -> None:
 
         # --- Show one view ---
         # Show views
-        cv2.imshow("Threshold Mask", mask)
+        # cv2.imshow("Threshold Mask", mask)
         cv2.imshow("Detections", frame)   # <-- switched from 'blurred' to 'frame'
+
+        # --- Tell ESP32 to move to next LED ---
+        ser.write(b"NEXT\n")
+        led_index = (led_index + 1) % 5  # assuming 5 LEDs
 
         # --- Keyboard controls ---
         k = cv2.waitKey(1) & 0xFF         # Capture key press (waits 1ms)
@@ -143,6 +197,7 @@ def main() -> None:
     # --- Cleanup ---
     cap.release()              # Release the camera so other apps can use it
     log_file.close()           # Close the CSV log file safely
+    ser.close()                # Close the serial connection
     cv2.destroyAllWindows()    # Close all OpenCV display windows
 
 
