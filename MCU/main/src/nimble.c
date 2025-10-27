@@ -13,6 +13,13 @@ static void on_stack_reset(int reason);
 static void on_stack_sync(void);
 static void nimble_host_config_init(void);
 static void nimble_host_task(void *param);
+static void ble_data_task(void *param);
+
+
+/* Statistics tracking */
+static uint32_t packets_sent = 0;
+static uint32_t packets_failed = 0;
+static uint32_t last_log_time = 0;
 
 /* Private functions */
 /*
@@ -54,28 +61,56 @@ static void nimble_host_task(void *param) {
 
 static void ble_data_task(void *param) {
     imu_packet_t packet;
-        // Wait for queue to be available
+    int rc;
+    
+    // Wait for queue to be available
     while (imu_data_queue == NULL) {
         ESP_LOGW(TAG, "Waiting for IMU queue to be created...");
         vTaskDelay(pdMS_TO_TICKS(100));
     }
     
     ESP_LOGI(TAG, "BLE data task started, queue available");
+    ESP_LOGI(TAG, "Packet size: %d bytes", sizeof(imu_packet_t));
     
-
     while (1) {
-        // Wait indefinitely for data from the IMU task
+        // Wait for data from the IMU task (block indefinitely)
         if (xQueueReceive(imu_data_queue, &packet, portMAX_DELAY) == pdTRUE) {
-            // Send the received packet via BLE
-            if (gatt_send_notification((const uint8_t *)&packet, sizeof(packet)) != 0) {
-                ESP_LOGE(TAG, "Failed to send IMU data via BLE");
+            
+            // Send the packet via BLE
+            rc = gatt_send_notification((const uint8_t *)&packet, sizeof(packet));
+            
+            if (rc != 0) {
+                packets_failed++;
+                ESP_LOGD(TAG, "Failed to send packet (rc=%d)", rc);
             } else {
-                ESP_LOGI(TAG, "Sent IMU data from channel %d at time %llu", packet.channel, packet.timestamp_us);
+                packets_sent++;
+                ESP_LOGV(TAG, "Sent channel %d @ %llu us", packet.channel, packet.timestamp_us);
+            }
+            
+            // Periodic statistics logging (every 5 seconds)
+            uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
+            if (now - last_log_time >= 5000) {
+                float success_rate = 100.0f * packets_sent / (packets_sent + packets_failed);
+                ESP_LOGI(TAG, "BLE Stats: Sent=%lu, Failed=%lu, Success=%.1f%%", 
+                         packets_sent, packets_failed, success_rate);
+                
+                // Calculate data rate
+                uint32_t elapsed_sec = (now - last_log_time) / 1000;
+                if (elapsed_sec > 0) {
+                    uint32_t packets_per_sec = packets_sent / elapsed_sec;
+                    uint32_t bytes_per_sec = packets_per_sec * sizeof(imu_packet_t);
+                    ESP_LOGI(TAG, "Data rate: %lu packets/sec, %lu bytes/sec (%.2f KB/s)",
+                             packets_per_sec, bytes_per_sec, bytes_per_sec / 1024.0f);
+                }
+                
+                // Reset counters
+                packets_sent = 0;
+                packets_failed = 0;
+                last_log_time = now;
             }
         }
     }
 }
-
 
 void start_ble_task(void) {
     /* Local variables */
