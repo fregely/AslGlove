@@ -1,6 +1,7 @@
 #include "imu_i2c.h"
 #include "TCA9548A.h"
 #include "ICM20948.h"
+#include "AK09916.h"
 #include "common.h"
 #include "driver/i2c_master.h"
 #include "imu_packet.h"
@@ -9,6 +10,9 @@
 static i2c_master_bus_handle_t i2c_bus;
 QueueHandle_t imu_data_queue = NULL;
 
+// Track which channels have working sensors
+static bool imu_present[MAX_IMUS] = {false};
+static bool mag_present[MAX_IMUS] = {false};
 
 static void i2c_master_init(void)
 {
@@ -22,43 +26,130 @@ static void i2c_master_init(void)
     };
     ESP_ERROR_CHECK(i2c_new_master_bus(&bus_config, &i2c_bus)); // Declares the MCU as I2C master
     ESP_ERROR_CHECK(tca9548a_init(i2c_bus, I2C_MASTER_FREQ_HZ)); // Initialize TCA9548A multiplexer as a buss
-    test_multiplexer_detection();
     ESP_ERROR_CHECK(imu_device_init(i2c_bus, I2C_MASTER_FREQ_HZ)); // Initialize ICM20948 IMU device
-
-    test_multiplexer_detection();
+    ESP_ERROR_CHECK(ak09916_device_init(i2c_bus, I2C_MASTER_FREQ_HZ)); // Initialize AK09916 Magnetometer device
 }
 
+
 static void imu_task(void *param) {
-    // Wake up all IMUs
-    for(uint8_t ch = 0; ch < MAX_IMUS; ch++) {
-        if (imu_write_reg(ch, ICM20948_PWR_MGMT_1, 0x01) == ESP_OK) {
-            ESP_LOGI(TAG, "IMU on channel %d woken up", ch);
-        }
-        if (imu_write_reg(ch, ICM20948_PWR_MGMT_2, 0x00) == ESP_OK) {
-            ESP_LOGI(TAG, "IMU on channel %d sensors enabled", ch);
-        }
+    ESP_LOGI(TAG, "Starting IMU initialization sequence...");
+    
+    // Test multiplexer
+    if(test_multiplexer_detection() != ESP_OK) {
+        ESP_LOGE(TAG, "Multiplexer detection failed!");
+        vTaskDelete(NULL);
+        return;
     }
     
+    ESP_LOGI(TAG, "Multiplexer detected successfully");
+    
+    // Initialize all channels
+    uint8_t imu_count = 0;
+    uint8_t mag_count = 0;
+    
+    for(uint8_t ch = 0; ch < MAX_IMUS; ch++) {
+        ESP_LOGI(TAG, "Scanning channel %d...", ch);
+        
+        // Select channel ONCE for all operations on this channel
+        ESP_ERROR_CHECK(tca9548a_select(ch));
+        
+        // Try to initialize IMU
+        if(imu_setup() == ESP_OK) {
+            ESP_LOGI(TAG, "✓ IMU initialized on channel %d", ch);
+            imu_present[ch] = true;
+            imu_count++;
+            
+            // Only try magnetometer if IMU works
+            if(ak09916_setup() == ESP_OK) {
+                ESP_LOGI(TAG, "✓ Magnetometer initialized on channel %d", ch);
+                mag_present[ch] = true;
+                mag_count++;
+            } else {
+                ESP_LOGW(TAG, "✗ Magnetometer not detected on channel %d", ch);
+            }
+        } else {
+            ESP_LOGW(TAG, "✗ No IMU detected on channel %d", ch);
+        }
+        
+        vTaskDelay(pdMS_TO_TICKS(50));
+    }
+    
+    // Print summary
+    ESP_LOGI(TAG, "");
+    ESP_LOGI(TAG, "========================================");
+    ESP_LOGI(TAG, "Initialization Summary:");
+    ESP_LOGI(TAG, "  IMUs detected: %d/%d", imu_count, MAX_IMUS);
+    ESP_LOGI(TAG, "  Magnetometers detected: %d/%d", mag_count, MAX_IMUS);
+    ESP_LOGI(TAG, "========================================");
+    
+    for(uint8_t ch = 0; ch < MAX_IMUS; ch++) {
+        if(imu_present[ch]) {
+            ESP_LOGI(TAG, "  Channel %d: IMU ✓  Mag %s", ch, mag_present[ch] ? "✓" : "✗");
+        }
+    }
+    ESP_LOGI(TAG, "========================================");
+    ESP_LOGI(TAG, "");
+    
+    if(imu_count == 0) {
+        ESP_LOGE(TAG, "No IMUs detected! Task will exit.");
+        vTaskDelete(NULL);
+        return;
+    }
+    
+    ESP_LOGI(TAG, "Starting sensor read loop...");
+    
+    // Main reading loop
     while (1) {
-        // Read data from each IMU channel
         for(uint8_t ch = 0; ch < MAX_IMUS; ch++) {
+            // Skip channels without working IMUs
+            if(!imu_present[ch]) {
+                continue;
+            }
+            
             imu_packet_t packet;
             packet.timestamp_us = esp_timer_get_time();
             packet.channel = ch;
-            if (imu_data_get(ch, packet.raw_data) == ESP_OK) {
-                ESP_LOGD(TAG, "Getting IMU Raw data from IMU: %d", ch);
-                // Send the packet to the queue
-                if (xQueueSend(imu_data_queue, &packet, pdMS_TO_TICKS(100)) != pdTRUE) {
-                    ESP_LOGE(TAG, "Failed to send IMU data to queue");
-                }
-                        vTaskDelay(pdMS_TO_TICKS(100));
-            } else {
-                ESP_LOGD(TAG, "Failed to read data from IMU on channel %d", ch);
+            
+            ESP_ERROR_CHECK(tca9548a_select(ch));
+            
+            // Read IMU data
+            esp_err_t imu_ret = imu_data_get(packet.raw_data);
+            if (imu_ret != ESP_OK) {
+                ESP_LOGW(TAG, "Failed to read IMU data on channel %d", ch);
+                continue;  // Skip to next channel
             }
-             // Small delay between IMU reads to avoid bus congestion
-
+            
+            ESP_LOGD(TAG, "Read IMU data from channel %d", ch);
+            
+            // Read magnetometer data (if present)
+            if(mag_present[ch]) {
+                esp_err_t mag_ret = ak09916_read_mag_data(packet.mag_data);
+                if(mag_ret != ESP_OK) {
+                    ESP_LOGD(TAG, "Mag data not ready on channel %d, zeroing", ch);
+                    memset(packet.mag_data, 0, 6);
+                }
+            } else {
+                // No magnetometer on this channel
+                memset(packet.mag_data, 0, 6);
+            }
+            
+            // Send packet (IMU data is good, mag might be zeros)
+            if (xQueueSend(imu_data_queue, &packet, pdMS_TO_TICKS(10)) != pdTRUE) {
+                ESP_LOGE(TAG, "Failed to send IMU data to queue (queue full?)");
+            } else {
+                ESP_LOGD(TAG, "Sent packet from channel %d", ch);
+            }
+            
+            // Small delay between channels
+            vTaskDelay(pdMS_TO_TICKS(10));
         }
-        vTaskDelay(pdMS_TO_TICKS(100)); // Adjust based on desired sampling rate
+        
+        // Delay between full scans
+        vTaskDelay(pdMS_TO_TICKS(50));
+
+        // Currently running 1.4kB/s can go up to 10kB/s if needed
+        // After testing should increase speed, by decreasing delay to 5, and 20, and increasing the I2C speed queueue size to 100. 
+        // 3.2Kb/s 20Hz/IMU vs current of 9 Hz/IMU
     }
 }
 
@@ -73,5 +164,5 @@ void start_imu_task(void) {
         return;
     }
 
-    xTaskCreate(imu_task, "imu_task", 2048, NULL, 5, NULL);
+    xTaskCreate(imu_task, "imu_task", 4096, NULL, 5, NULL);
 }

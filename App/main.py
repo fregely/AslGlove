@@ -3,12 +3,13 @@ import asyncio
 import logging
 import struct
 import time
-from typing import Optional
+from typing import Optional, Dict
 from pathlib import Path
 from bleak import BleakClient, BleakScanner
 from bleak.backends.characteristic import BleakGATTCharacteristic
 import matplotlib.pyplot as plt
-from collections import deque
+from collections import deque, defaultdict
+from converter import IMUConverter
 
 # ====== Default Configuration ======
 DEFAULT_NAME = "ASL_Glove"
@@ -16,50 +17,104 @@ DEFAULT_CHAR_UUID = "c4e7a180-7b2f-4c95-bfc5-1d5c62123456"
 
 # For smoother real-time plotting
 MAX_POINTS = 200
-ax_data = deque(maxlen=MAX_POINTS)
-ay_data = deque(maxlen=MAX_POINTS)
-az_data = deque(maxlen=MAX_POINTS)
-gx_data = deque(maxlen=MAX_POINTS)
-gy_data = deque(maxlen=MAX_POINTS)
-gz_data = deque(maxlen=MAX_POINTS)
+NUM_CHANNELS = 2  # Number of IMU channels (0 and 1)
+converter = IMUConverter() 
+
+# Data storage per channel
+channel_data = defaultdict(lambda: {
+    'ax': deque(maxlen=MAX_POINTS),
+    'ay': deque(maxlen=MAX_POINTS),
+    'az': deque(maxlen=MAX_POINTS),
+    'gx': deque(maxlen=MAX_POINTS),
+    'gy': deque(maxlen=MAX_POINTS),
+    'gz': deque(maxlen=MAX_POINTS),
+    'mx': deque(maxlen=MAX_POINTS),
+    'my': deque(maxlen=MAX_POINTS),
+    'mz': deque(maxlen=MAX_POINTS),
+})
 
 # Recording state
 recording_file = None
 packet_count = 0
+seen_channels = set()
 
-# --- Plot setup ---
+# --- Plot setup - Create subplots for each channel ---
 plt.ion()
-fig, (ax_accel, ax_gyro) = plt.subplots(2, 1, figsize=(8, 6))
-line_ax, = ax_accel.plot([], [], label='Ax')
-line_ay, = ax_accel.plot([], [], label='Ay')
-line_az, = ax_accel.plot([], [], label='Az')
-line_gx, = ax_gyro.plot([], [], label='Gx')
-line_gy, = ax_gyro.plot([], [], label='Gy')
-line_gz, = ax_gyro.plot([], [], label='Gz')
+fig, axes = plt.subplots(NUM_CHANNELS, 3, figsize=(15, 4*NUM_CHANNELS))
 
-ax_accel.set_title("Accelerometer")
-ax_gyro.set_title("Gyroscope")
-for ax in (ax_accel, ax_gyro):
-    ax.legend()
-    ax.set_ylim(-40000, 40000)
+# If only one channel, axes needs to be 2D
+if NUM_CHANNELS == 1:
+    axes = axes.reshape(1, -1)
+
+# Store line objects for each channel
+lines = {}
+for ch in range(NUM_CHANNELS):
+    lines[ch] = {
+        'accel': {
+            'ax': axes[ch, 0].plot([], [], label='Ax', color='red')[0],
+            'ay': axes[ch, 0].plot([], [], label='Ay', color='green')[0],
+            'az': axes[ch, 0].plot([], [], label='Az', color='blue')[0],
+        },
+        'gyro': {
+            'gx': axes[ch, 1].plot([], [], label='Gx', color='red')[0],
+            'gy': axes[ch, 1].plot([], [], label='Gy', color='green')[0],
+            'gz': axes[ch, 1].plot([], [], label='Gz', color='blue')[0],
+        },
+        'mag': {
+            'mx': axes[ch, 2].plot([], [], label='Mx', color='red')[0],
+            'my': axes[ch, 2].plot([], [], label='My', color='green')[0],
+            'mz': axes[ch, 2].plot([], [], label='Mz', color='blue')[0],
+        }
+    }
+    
+    # Configure axes
+    axes[ch, 0].set_title(f"Channel {ch} - Accelerometer (g)")
+    axes[ch, 1].set_title(f"Channel {ch} - Gyroscope (°/s)")
+    axes[ch, 2].set_title(f"Channel {ch} - Magnetometer (µT)")
+    
+    axes[ch, 0].legend(loc='upper right')
+    axes[ch, 1].legend(loc='upper right')
+    axes[ch, 2].legend(loc='upper right')
+    
+    axes[ch, 0].set_ylim(-4, 4)
+    axes[ch, 1].set_ylim(-400, 400)
+    axes[ch, 2].set_ylim(-100, 100)
+    
+    axes[ch, 0].grid(True, alpha=0.3)
+    axes[ch, 1].grid(True, alpha=0.3)
+    axes[ch, 2].grid(True, alpha=0.3)
+
+plt.tight_layout()
 
 def update_plot():
-    """Update the live plot with new data."""
-    line_ax.set_ydata(list(ax_data))
-    line_ay.set_ydata(list(ay_data))
-    line_az.set_ydata(list(az_data))
-    line_gx.set_ydata(list(gx_data))
-    line_gy.set_ydata(list(gy_data))
-    line_gz.set_ydata(list(gz_data))
-
-    x = range(len(ax_data))
-    for line in (line_ax, line_ay, line_az, line_gx, line_gy, line_gz):
-        line.set_xdata(x)
-
-    for ax in (ax_accel, ax_gyro):
-        ax.relim()
-        ax.autoscale_view()
-
+    """Update the live plot with new data for all channels."""
+    for ch in seen_channels:
+        if ch >= NUM_CHANNELS:
+            continue
+            
+        data = channel_data[ch]
+        
+        # Update accelerometer
+        x = range(len(data['ax']))
+        lines[ch]['accel']['ax'].set_data(x, list(data['ax']))
+        lines[ch]['accel']['ay'].set_data(x, list(data['ay']))
+        lines[ch]['accel']['az'].set_data(x, list(data['az']))
+        
+        # Update gyroscope
+        lines[ch]['gyro']['gx'].set_data(x, list(data['gx']))
+        lines[ch]['gyro']['gy'].set_data(x, list(data['gy']))
+        lines[ch]['gyro']['gz'].set_data(x, list(data['gz']))
+        
+        # Update magnetometer
+        lines[ch]['mag']['mx'].set_data(x, list(data['mx']))
+        lines[ch]['mag']['my'].set_data(x, list(data['my']))
+        lines[ch]['mag']['mz'].set_data(x, list(data['mz']))
+        
+        # Rescale axes
+        for ax in axes[ch, :]:
+            ax.relim()
+            ax.autoscale_view()
+    
     plt.pause(0.01)
 
 logger = logging.getLogger(__name__)
@@ -80,50 +135,72 @@ def process_packet(data: bytearray, source: str = "BLE"):
     """
     Process a single IMU packet and update the plot.
     
-    Expected packet structure (23 bytes total):
+    Packet structure (27 bytes total):
     - 1 byte: channel (uint8_t)
     - 8 bytes: timestamp_us (uint64_t, little-endian)
-    - 14 bytes: raw_data
-        - 2 bytes: accel X (high, low) - big-endian int16
-        - 2 bytes: accel Y
-        - 2 bytes: accel Z
-        - 2 bytes: gyro X
-        - 2 bytes: gyro Y
-        - 2 bytes: gyro Z
+    - 12 bytes: raw_data (accel XYZ + gyro XYZ, NO temperature)
+        - 6 bytes: accel (big-endian int16)
+        - 6 bytes: gyro (big-endian int16)
+    - 6 bytes: mag_data (magnetometer XYZ, little-endian int16)
     """
-    global packet_count
+    global packet_count, seen_channels
     
     logger.debug(f"[{source}] Received {len(data)} bytes: {data.hex()}")
     
     try:
         # Check packet length
-        if len(data) != 21:
-            logger.warning(f"⚠️ Expected 21 bytes, got {len(data)}")
+        if len(data) != 27:
+            logger.warning(f"⚠️ Expected 27 bytes, got {len(data)}")
+            logger.warning(f"Raw packet: {data.hex()}")
             return
         
         # Unpack the packet header
         channel = data[0]
         timestamp_us = struct.unpack_from('<Q', data, 1)[0]  # uint64_t little-endian
         
-        # Unpack the 14 bytes of raw IMU data (big-endian int16)
-        # ICM-20948 stores data in big-endian format (high byte first)
-        raw_values = struct.unpack_from('>6h', data, 9)  # 7 signed 16-bit big-endian
+        # Track which channels we've seen
+        seen_channels.add(channel)
         
-        ax, ay, az = raw_values[0], raw_values[1], raw_values[2]  # Accel
-        gx, gy, gz = raw_values[3], raw_values[4], raw_values[5]  # Gyro  
+        # Unpack the 12 bytes of raw IMU data (big-endian int16)
+        # ICM-20948 stores accel/gyro data in big-endian format (high byte first)
+        # Register order: Accel X,Y,Z → Gyro X,Y,Z (no temperature)
+        raw_values = struct.unpack_from('>6h', data, 9)  # 6 signed 16-bit big-endian
         
-        logger.info(f"[{source}] Ch{channel} @{timestamp_us}µs → Accel({ax},{ay},{az}) Gyro({gx},{gy},{gz})")
+        ax, ay, az = raw_values[0], raw_values[1], raw_values[2]
+        gx, gy, gz = raw_values[3], raw_values[4], raw_values[5]
         
-        # Append data to queues for live plotting
-        ax_data.append(ax)
-        ay_data.append(ay)
-        az_data.append(az)
-        gx_data.append(gx)
-        gy_data.append(gy)
-        gz_data.append(gz)
+        # Unpack magnetometer data (6 bytes at offset 21)
+        # AK09916 magnetometer uses LITTLE-ENDIAN format (different from ICM-20948!)
+        mag_values = struct.unpack_from('<3h', data, 21)  # 3 signed 16-bit little-endian
+        mx, my, mz = mag_values[0], mag_values[1], mag_values[2]
         
-        update_plot()
+        ax_g, ay_g, az_g = converter.convert_accelerometer(ax, ay, az)
+        gx_deg, gy_deg, gz_deg = converter.convert_gyroscope(gx, gy, gz)
+        mx_ut, my_ut, mz_ut = converter.convert_magnetometer(mx, my, mz)
+
+        # Check if magnetometer is all zeros
+        if mx == 0 and my == 0 and mz == 0:
+            logger.warning(f"[{source}] Ch{channel} @{timestamp_us}µs → Accel({ax},{ay},{az}) Gyro({gx},{gy},{gz}) Mag(0,0,0) ❌ MAG NOT WORKING")
+        else:
+            logger.info(f"[{source}] Ch{channel} @{timestamp_us}µs → Accel({ax},{ay},{az}) Gyro({gx},{gy},{gz}) Mag({mx},{my},{mz})")
+        
+        # Append data to the appropriate channel's queues
+        data_dict = channel_data[channel]
+        data_dict['ax'].append(ax_g)    # NEW - in g
+        data_dict['ay'].append(ay_g)    # NEW - in g
+        data_dict['az'].append(az_g)    # NEW - in g
+        data_dict['gx'].append(gx_deg)  # NEW - in °/s
+        data_dict['gy'].append(gy_deg)  # NEW - in °/s
+        data_dict['gz'].append(gz_deg)  # NEW - in °/s
+        data_dict['mx'].append(mx_ut)   # NEW - in µT
+        data_dict['my'].append(my_ut)   # NEW - in µT
+        data_dict['mz'].append(mz_ut)   # NEW - in µT
+        
         packet_count += 1
+        
+        # Update plot every 20 packets for better performance
+        if packet_count % 20 == 0:
+            update_plot()
         
     except Exception as e:
         logger.error(f"⚠️ Failed to parse IMU packet: {e}")
@@ -299,7 +376,7 @@ async def main(args: Args):
 # ====== CLI Argument Setup ======
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="BLE IMU Data Receiver with Recording/Playback",
+        description="BLE IMU Data Receiver with Recording/Playback - Separate plots per channel",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -319,7 +396,7 @@ Examples:
 
     parser.add_argument(
         "--name",
-        metavar="<name>",
+        metavar="<n>",
         default=DEFAULT_NAME,
         help=f"Bluetooth device name (default: {DEFAULT_NAME})",
     )

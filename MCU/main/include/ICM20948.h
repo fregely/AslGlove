@@ -22,6 +22,17 @@
 #define ICM20948_PWR_MGMT_1     0x06
 #define ICM20948_PWR_MGMT_2     0x07
 
+// User control
+#define ICM20948_USER_CTRL      0x03
+
+// Interrupt pin configuration
+#define ICM20948_INT_PIN_CFG    0x0F
+
+// External sensor data registers (for I2C Master mode)
+#define ICM20948_EXT_SENS_DATA_00   0x3B
+#define ICM20948_EXT_SENS_DATA_01   0x3C
+// ... up to EXT_SENS_DATA_23
+
 // Accelerometer & Gyroscope data registers
 #define ICM20948_ACCEL_XOUT_H   0x2D
 #define ICM20948_ACCEL_XOUT_L   0x2E
@@ -37,7 +48,7 @@
 #define ICM20948_GYRO_ZOUT_H    0x37
 #define ICM20948_GYRO_ZOUT_L    0x38
 
-// Temperature
+// Temperature (not used, but kept for reference)
 #define ICM20948_TEMP_OUT_H     0x39
 #define ICM20948_TEMP_OUT_L     0x3A
 
@@ -50,43 +61,27 @@
 #define ICM20948_ACCEL_CONFIG   0x14
 #define ICM20948_ACCEL_CONFIG_2 0x15
 
-// ---- Magnetometer (AK09916 inside ICM-20948) ----
-// Accessible via I2C master passthrough
-#define AK09916_I2C_ADDR        0x0C
-#define AK09916_WHO_AM_I        0x00  // Should return 0x09
-#define AK09916_ST1             0x10
-#define AK09916_HXL             0x11
-#define AK09916_HXH             0x12
-#define AK09916_HYL             0x13
-#define AK09916_HYH             0x14
-#define AK09916_HZL             0x15
-#define AK09916_HZH             0x16
-#define AK09916_ST2             0x18
+// ---- BANK 3 ----
+// I2C Master control
+#define ICM20948_I2C_MST_CTRL   0x01
+#define ICM20948_I2C_MST_STATUS 0x17
+
+// I2C Slave configuration (for I2C master mode, if needed later)
+#define ICM20948_I2C_SLV0_ADDR  0x03
+#define ICM20948_I2C_SLV0_REG   0x04
+#define ICM20948_I2C_SLV0_CTRL  0x05
 
 // ---- Useful constants ----
 #define ICM20948_RESET          0x80
 #define ICM20948_CLK_AUTO       0x01
 
-// Data structure to hold sensor readings
-typedef struct {
-    float accel_x;
-    float accel_y;
-    float accel_z;
-    float gyro_x;
-    float gyro_y;
-    float gyro_z;
-    float temp;
-    float mag_x;
-    float mag_y;
-    float mag_z;
-} icm20948_data_t;
-
-esp_err_t imu_read_reg(uint8_t channel, uint8_t reg_addr, uint8_t *data, size_t len);
-esp_err_t imu_write_reg(uint8_t channel, uint8_t reg_addr, uint8_t data);
+// Function declarations
 esp_err_t imu_device_init(i2c_master_bus_handle_t bus_handle, uint32_t scl_speed_hz);
-esp_err_t imu_data_get(uint8_t channel, uint8_t raw_data[12]);
+esp_err_t imu_read_reg(uint8_t reg_addr, uint8_t *data, size_t len);
+esp_err_t imu_write_reg(uint8_t reg_addr, uint8_t data);
+esp_err_t imu_setup();
 
-//add something to change and track the banks, for now itll just be in bank 1
-
+// Accel + Gyro (12 bytes, no temperature)
+esp_err_t imu_data_get(uint8_t raw_data[12]);
 
 #endif // ICM20948_H
