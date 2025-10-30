@@ -71,8 +71,7 @@ class IMUConverter:
             
         Returns:
         --------
-        tuple : (gx_deg, gy_deg, gz_deg, gx_rad, gy_rad, gz_rad)
-                First 3 in °/s, last 3 in rad/s
+        tuple : (gx_deg, gy_deg, gz_deg)
         """
         # Convert to degrees per second
         gx_deg = raw_x / self.gyro_scale
