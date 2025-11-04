@@ -132,8 +132,21 @@ look for the service
 /service0028/char0029
 c4e7a180-7b2f-4c95-bfc5-1d5c62123456 - for imu data 
 
-select-attribute 0c4e7a180-7b2f-4c95-bfc5-1d5c62123456
-
+select-attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f
 notify on
 
 https://www.freertos.org/Documentation/01-FreeRTOS-quick-start/01-Beginners-guide/00-Overview
+
+
+source venv/bin/activate
+
+# Play at normal speed
+python main.py --playback my_data.imu
+
+# Play at 2x speed
+python main.py --playback my_data.imu --playback-speed 2.0
+
+# Play as fast as possible (no delays)
+python main.py --playback my_data.imu --playback-speed 0
+
+python main.py --record test_data.imu
