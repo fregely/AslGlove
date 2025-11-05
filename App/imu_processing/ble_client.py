@@ -20,13 +20,14 @@ class BLEClient:
         self, 
         device_name: str = "ASL_Glove", 
         characteristic_uuid: str = "c4e7a180-7b2f-4c95-bfc5-1d5c62123456"
+        data: bytearray
     ):
         self.device_name = device_name
         self.characteristic_uuid = characteristic_uuid
         self.packet_queue = asyncio.Queue()
         self.client: Optional[BleakClient] = None
         self.is_connected = False
-        self.parser = PacketParser()  # ← Use the parser
+        self.data = 0
         
     async def connect(self, address: Optional[str] = None, macos_use_bdaddr: bool = False):
         """Connect to the BLE device."""
@@ -87,7 +88,7 @@ class BLEClient:
         """Internal: called when BLE data arrives."""
         try:
             # Use PacketParser to parse the bytes
-            packet = self.parser.parse(data)  # ← Simple!
+            packet = self.parser.parse(data)  
             self.packet_queue.put_nowait(packet)
         except Exception as e:
             logger.error(f"⚠️ Failed to parse packet: {e}")

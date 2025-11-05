@@ -151,10 +151,6 @@ def process_packet(data: bytearray):
         gx_deg, gy_deg, gz_deg = converter.convert_gyroscope(gx, gy, gz)
         mx_ut, my_ut, mz_ut = converter.convert_magnetometer(mx, my, mz)
         
-        # Convert gyro from degrees/sec to radians/sec for Madgwick
-        gx_rad = math.radians(gx_deg)
-        gy_rad = math.radians(gy_deg)
-        gz_rad = math.radians(gz_deg)
         
         # Update Madgwick filter
         filters[channel].update(
