@@ -41,6 +41,10 @@ https://docs.espressif.com/projects/esp-idf/en/latest/esp32/get-started/linux-ma
 https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32c3/esp32-c3-devkitm-1/user_guide.html
 https://www.espressif.com/sites/default/files/documentation/esp32-c3_datasheet_en.pdf
 
+## NimBLE information
+https://www.bluetooth.com/specifications/specs/battery-service/ - Battery information GATT service
+https://learn.adafruit.com/introduction-to-bluetooth-low-energy/introduction - Information on BLE and how they work
+
 ## Linux Build Guide
 
 ### First Time Setup
