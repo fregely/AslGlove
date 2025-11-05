@@ -1,10 +1,13 @@
 # ASL Glove Project  
+Capstone 2025
+Authors 
+- Clara Small
+- David Noble
+- Lauren Hutchison
+- Camille Ferrell
+- Norah Bumrah
 
-openCV blob detection guide 
-https://opencv.org/blog/blob-detection-using-opencv/
-^ gives both python and C++, I (david) would prefer to use C++ just to keep all the programs 
-in c/c++ but if your more comfortable with python you can us that instead
-
+Guides for each app can be found in the README.md for each
 ---
 ## Git Setup (First Time)  
 
