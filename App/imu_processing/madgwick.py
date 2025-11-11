@@ -17,13 +17,10 @@ class MadgwickFilter:
         quaternion = self.get_quaternion()
         euler = self.get_euler_angles()
 
-        return {
-            'channel': packet['channel'],
-            'timestamp_us': packet['timestamp_us'],
-            'quaternion' : quaternion,
-            'euler' : euler,
-            'accel': packet['accel']
-        }
+        packet['quaternion'] = self.get_quaternion()
+        packet['euler'] = self.get_euler_angles()
+        
+        return packet
 
     def update(self, gx, gy, gz, ax, ay, az, mx, my, mz):
         """

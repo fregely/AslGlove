@@ -38,18 +38,12 @@ class DeadReckoning:
         
         # Update position estimate
         result = self.update(quaternion, accel_g, stationary=is_stationary)
-        
+
+        packet['position'] = tuple(result['position'])
+        packet['velocity'] = tuple(result['velocity'])
+        packet['linear_accel'] = tuple(result['linear_accel'])
         # Return complete state
-        return {
-            'channel': packet['channel'],
-            'timestamp_us': packet['timestamp_us'],
-            'quaternion': packet['quaternion'],
-            'euler': packet['euler'],
-            'position': tuple(result['position']),
-            'velocity': tuple(result['velocity']),
-            'linear_accel': tuple(result['linear_accel']),
-            'is_stationary': is_stationary,
-        }
+        return packet
     
     def quaternion_rotate_vector(self, q, v):
         """Rotate vector v by quaternion q.

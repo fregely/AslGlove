@@ -40,23 +40,20 @@ class IMUConverter:
         """
         self.gyro_bias = bias.copy()
         
-    def converter(self, packet: dict) -> dict:
-        accel_raw = packet['accel']
-        gyro_raw = packet['gyro']
-        mag_raw = packet['mag']
+    def convert(self, packet: dict) -> dict:
+        accel_raw = packet['accel_raw']
+        gyro_raw = packet['gyro_raw']
+        mag_raw = packet['mag_raw']
 
         accel_g = self.convert_accelerometer(*accel_raw)
         gyro_deg = self.convert_gyroscope(*gyro_raw)
         mag_ut = self.convert_magnetometer(*mag_raw)
 
-        return {
-            # Keep original data
-            'channel': packet['channel'],
-            'timestamp_us': packet['timestamp_us'],
-            'accel': accel_g,
-            'gyro': gyro_deg,
-            'mag': mag_ut,
-        }
+        packet['accel'] = accel_g
+        packet['gyro'] = gyro_deg
+        packet['mag'] = mag_ut
+
+        return packet
 
 
     def convert_accelerometer(self, raw_x, raw_y, raw_z):
