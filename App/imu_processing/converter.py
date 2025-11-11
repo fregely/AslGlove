@@ -28,6 +28,33 @@ class IMUConverter:
         # MAGNETOMETER: AK09916 inside ICM-20948
         # The magnetometer has a fixed scale of 0.15 µT per LSB
         self.mag_scale = 0.15  # µT/LSB
+    
+    def set_gyro_bias(self, bias: np.ndarray):
+        """
+        Set gyro bias from calibration.
+        
+        Parameters:
+        -----------
+        bias : np.ndarray
+            Gyro bias [gx, gy, gz] in °/s
+        """
+        self.gyro_bias = bias.copy()
+        
+    def convert(self, packet: dict) -> dict:
+        accel_raw = packet['accel_raw']
+        gyro_raw = packet['gyro_raw']
+        mag_raw = packet['mag_raw']
+
+        accel_g = self.convert_accelerometer(*accel_raw)
+        gyro_deg = self.convert_gyroscope(*gyro_raw)
+        mag_ut = self.convert_magnetometer(*mag_raw)
+
+        packet['accel'] = accel_g
+        packet['gyro'] = gyro_deg
+        packet['mag'] = mag_ut
+
+        return packet
+
 
     def convert_accelerometer(self, raw_x, raw_y, raw_z):
         """
@@ -71,8 +98,7 @@ class IMUConverter:
             
         Returns:
         --------
-        tuple : (gx_deg, gy_deg, gz_deg, gx_rad, gy_rad, gz_rad)
-                First 3 in °/s, last 3 in rad/s
+        tuple : (gx_deg, gy_deg, gz_deg)
         """
         # Convert to degrees per second
         gx_deg = raw_x / self.gyro_scale
@@ -109,26 +135,3 @@ class IMUConverter:
         
         return (mx_ut, my_ut, mz_ut)
     
-    def process_all(self, accel_raw, gyro_raw, mag_raw):
-        """
-        Process all three sensors at once.
-        
-        Parameters:
-        -----------
-        accel_raw : tuple of (x, y, z) raw values
-        gyro_raw : tuple of (x, y, z) raw values  
-        mag_raw : tuple of (x, y, z) raw values
-        
-        Returns:
-        --------
-        dict : All converted values with labels
-        """
-        ax_g, ay_g, az_g = self.convert_accelerometer(*accel_raw)
-        gx_deg, gy_deg, gz_deg = self.convert_gyroscope(*gyro_raw)
-        mx_ut, my_ut, mz_ut = self.convert_magnetometer(*mag_raw)
-        
-        return {
-            'accel_g': (ax_g, ay_g, az_g),
-            'gyro_deg_s': (gx_deg, gy_deg, gz_deg),
-            'mag_ut': (mx_ut, my_ut, mz_ut)
-        }

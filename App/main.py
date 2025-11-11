@@ -1,454 +1,406 @@
-import argparse
+# main.py
 import asyncio
+import argparse
 import logging
-import struct
-import time
-from typing import Optional, Dict
-from pathlib import Path
-from bleak import BleakClient, BleakScanner
-from bleak.backends.characteristic import BleakGATTCharacteristic
-import matplotlib.pyplot as plt
-from collections import deque, defaultdict
-from converter import IMUConverter
-
-# ====== Default Configuration ======
-DEFAULT_NAME = "ASL_Glove"
-DEFAULT_CHAR_UUID = "c4e7a180-7b2f-4c95-bfc5-1d5c62123456"
-
-# For smoother real-time plotting
-MAX_POINTS = 200
-NUM_CHANNELS = 2  # Number of IMU channels (0 and 1)
-converter = IMUConverter() 
-
-# Data storage per channel
-channel_data = defaultdict(lambda: {
-    'ax': deque(maxlen=MAX_POINTS),
-    'ay': deque(maxlen=MAX_POINTS),
-    'az': deque(maxlen=MAX_POINTS),
-    'gx': deque(maxlen=MAX_POINTS),
-    'gy': deque(maxlen=MAX_POINTS),
-    'gz': deque(maxlen=MAX_POINTS),
-    'mx': deque(maxlen=MAX_POINTS),
-    'my': deque(maxlen=MAX_POINTS),
-    'mz': deque(maxlen=MAX_POINTS),
-})
-
-# Recording state
-recording_file = None
-packet_count = 0
-seen_channels = set()
-
-# --- Plot setup - Create subplots for each channel ---
-plt.ion()
-fig, axes = plt.subplots(NUM_CHANNELS, 3, figsize=(15, 4*NUM_CHANNELS))
-
-# If only one channel, axes needs to be 2D
-if NUM_CHANNELS == 1:
-    axes = axes.reshape(1, -1)
-
-# Store line objects for each channel
-lines = {}
-for ch in range(NUM_CHANNELS):
-    lines[ch] = {
-        'accel': {
-            'ax': axes[ch, 0].plot([], [], label='Ax', color='red')[0],
-            'ay': axes[ch, 0].plot([], [], label='Ay', color='green')[0],
-            'az': axes[ch, 0].plot([], [], label='Az', color='blue')[0],
-        },
-        'gyro': {
-            'gx': axes[ch, 1].plot([], [], label='Gx', color='red')[0],
-            'gy': axes[ch, 1].plot([], [], label='Gy', color='green')[0],
-            'gz': axes[ch, 1].plot([], [], label='Gz', color='blue')[0],
-        },
-        'mag': {
-            'mx': axes[ch, 2].plot([], [], label='Mx', color='red')[0],
-            'my': axes[ch, 2].plot([], [], label='My', color='green')[0],
-            'mz': axes[ch, 2].plot([], [], label='Mz', color='blue')[0],
-        }
-    }
-    
-    # Configure axes
-    axes[ch, 0].set_title(f"Channel {ch} - Accelerometer (g)")
-    axes[ch, 1].set_title(f"Channel {ch} - Gyroscope (°/s)")
-    axes[ch, 2].set_title(f"Channel {ch} - Magnetometer (µT)")
-    
-    axes[ch, 0].legend(loc='upper right')
-    axes[ch, 1].legend(loc='upper right')
-    axes[ch, 2].legend(loc='upper right')
-    
-    axes[ch, 0].set_ylim(-4, 4)
-    axes[ch, 1].set_ylim(-400, 400)
-    axes[ch, 2].set_ylim(-100, 100)
-    
-    axes[ch, 0].grid(True, alpha=0.3)
-    axes[ch, 1].grid(True, alpha=0.3)
-    axes[ch, 2].grid(True, alpha=0.3)
-
-plt.tight_layout()
-
-def update_plot():
-    """Update the live plot with new data for all channels."""
-    for ch in seen_channels:
-        if ch >= NUM_CHANNELS:
-            continue
-            
-        data = channel_data[ch]
-        
-        # Update accelerometer
-        x = range(len(data['ax']))
-        lines[ch]['accel']['ax'].set_data(x, list(data['ax']))
-        lines[ch]['accel']['ay'].set_data(x, list(data['ay']))
-        lines[ch]['accel']['az'].set_data(x, list(data['az']))
-        
-        # Update gyroscope
-        lines[ch]['gyro']['gx'].set_data(x, list(data['gx']))
-        lines[ch]['gyro']['gy'].set_data(x, list(data['gy']))
-        lines[ch]['gyro']['gz'].set_data(x, list(data['gz']))
-        
-        # Update magnetometer
-        lines[ch]['mag']['mx'].set_data(x, list(data['mx']))
-        lines[ch]['mag']['my'].set_data(x, list(data['my']))
-        lines[ch]['mag']['mz'].set_data(x, list(data['mz']))
-        
-        # Rescale axes
-        for ax in axes[ch, :]:
-            ax.relim()
-            ax.autoscale_view()
-    
-    plt.pause(0.01)
+from imu_processing.ble_client import BLEClient
+from imu_processing.packet_parser import PacketParser
+from imu_processing.converter import IMUConverter
+from imu_processing.madgwick import MadgwickFilter
+from imu_processing.dead_reckoning import DeadReckoning
+from imu_processing.imu_grapher import IMUGrapher, GraphMode
+from imu_processing.recording import Recording, PlaybackClient
 
 logger = logging.getLogger(__name__)
 
 
-class Args(argparse.Namespace):
-    name: Optional[str]
-    address: Optional[str]
-    macos_use_bdaddr: bool
-    characteristic: str
-    debug: bool
-    record: Optional[str]
-    playback: Optional[str]
-    playback_speed: float
-
-
-def process_packet(data: bytearray, source: str = "BLE"):
+def parse_graph_mode(args):
     """
-    Process a single IMU packet and update the plot.
+    Parse command line arguments to determine GraphMode.
     
-    Packet structure (27 bytes total):
-    - 1 byte: channel (uint8_t)
-    - 8 bytes: timestamp_us (uint64_t, little-endian)
-    - 12 bytes: raw_data (accel XYZ + gyro XYZ, NO temperature)
-        - 6 bytes: accel (big-endian int16)
-        - 6 bytes: gyro (big-endian int16)
-    - 6 bytes: mag_data (magnetometer XYZ, little-endian int16)
+    Returns appropriate GraphMode based on --mode argument.
     """
-    global packet_count, seen_channels
+    mode = args.mode
     
-    logger.debug(f"[{source}] Received {len(data)} bytes: {data.hex()}")
+    # Preset modes
+    if mode == 'all':
+        return GraphMode.ALL
     
-    try:
-        # Check packet length
-        if len(data) != 27:
-            logger.warning(f"⚠️ Expected 27 bytes, got {len(data)}")
-            logger.warning(f"Raw packet: {data.hex()}")
-            return
+    elif mode == 'debug':
+        return GraphMode.CONVERTED | GraphMode.MADGWICK | GraphMode.DEAD_RECKONING
+    
+    elif mode == 'sensor':
+        return GraphMode.UNCONVERTED | GraphMode.CONVERTED
+    
+    elif mode == 'madgwick':
+        return GraphMode.MADGWICK
+    
+    elif mode == 'position':
+        return GraphMode.DEAD_RECKONING
+    
+    elif mode == 'graph':
+        # Custom mode - parse graph_options
+        if not args.graph_options:
+            logger.error("--mode graph requires additional arguments")
+            logger.error("Example: --mode graph converted madgwick")
+            raise ValueError("No graph options provided for 'graph' mode")
         
-        # Unpack the packet header
-        channel = data[0]
-        timestamp_us = struct.unpack_from('<Q', data, 1)[0]  # uint64_t little-endian
+        result = GraphMode(0)  # Start with no flags
         
-        # Track which channels we've seen
-        seen_channels.add(channel)
+        for option in args.graph_options:
+            option_lower = option.lower()
+            
+            if option_lower == 'unconverted':
+                result |= GraphMode.UNCONVERTED
+            elif option_lower == 'converted':
+                result |= GraphMode.CONVERTED
+            elif option_lower == 'madgwick':
+                result |= GraphMode.MADGWICK
+            elif option_lower in ['dead_reckoning', 'position', 'dead']:
+                result |= GraphMode.DEAD_RECKONING
+            else:
+                logger.warning(f"Unknown graph option: {option}")
         
-        # Unpack the 12 bytes of raw IMU data (big-endian int16)
-        # ICM-20948 stores accel/gyro data in big-endian format (high byte first)
-        # Register order: Accel X,Y,Z → Gyro X,Y,Z (no temperature)
-        raw_values = struct.unpack_from('>6h', data, 9)  # 6 signed 16-bit big-endian
+        if result == 0:
+            raise ValueError("No valid graph options provided")
         
-        ax, ay, az = raw_values[0], raw_values[1], raw_values[2]
-        gx, gy, gz = raw_values[3], raw_values[4], raw_values[5]
-        
-        # Unpack magnetometer data (6 bytes at offset 21)
-        # AK09916 magnetometer uses LITTLE-ENDIAN format (different from ICM-20948!)
-        mag_values = struct.unpack_from('<3h', data, 21)  # 3 signed 16-bit little-endian
-        mx, my, mz = mag_values[0], mag_values[1], mag_values[2]
-        
-        ax_g, ay_g, az_g = converter.convert_accelerometer(ax, ay, az)
-        gx_deg, gy_deg, gz_deg = converter.convert_gyroscope(gx, gy, gz)
-        mx_ut, my_ut, mz_ut = converter.convert_magnetometer(mx, my, mz)
-
-        # Check if magnetometer is all zeros
-        if mx == 0 and my == 0 and mz == 0:
-            logger.warning(f"[{source}] Ch{channel} @{timestamp_us}µs → Accel({ax},{ay},{az}) Gyro({gx},{gy},{gz}) Mag(0,0,0) ❌ MAG NOT WORKING")
-        else:
-            logger.info(f"[{source}] Ch{channel} @{timestamp_us}µs → Accel({ax},{ay},{az}) Gyro({gx},{gy},{gz}) Mag({mx},{my},{mz})")
-        
-        # Append data to the appropriate channel's queues
-        data_dict = channel_data[channel]
-        data_dict['ax'].append(ax_g)    # NEW - in g
-        data_dict['ay'].append(ay_g)    # NEW - in g
-        data_dict['az'].append(az_g)    # NEW - in g
-        data_dict['gx'].append(gx_deg)  # NEW - in °/s
-        data_dict['gy'].append(gy_deg)  # NEW - in °/s
-        data_dict['gz'].append(gz_deg)  # NEW - in °/s
-        data_dict['mx'].append(mx_ut)   # NEW - in µT
-        data_dict['my'].append(my_ut)   # NEW - in µT
-        data_dict['mz'].append(mz_ut)   # NEW - in µT
-        
-        packet_count += 1
-        
-        # Update plot every 20 packets for better performance
-        if packet_count % 20 == 0:
-            update_plot()
-        
-    except Exception as e:
-        logger.error(f"⚠️ Failed to parse IMU packet: {e}")
+        return result
+    
+    else:
+        logger.error(f"Unknown mode: {mode}")
+        raise ValueError(f"Invalid mode: {mode}")
 
 
-# ====== Notification Handler ======
-def notification_handler(characteristic: BleakGATTCharacteristic, data: bytearray):
-    """Handles BLE notifications and optionally records them."""
-    global recording_file
+async def main(args):
+    """Main data processing pipeline."""
     
-    # Record packet if recording is enabled
-    if recording_file is not None:
-        try:
-            # Write packet length (2 bytes) + packet data
-            recording_file.write(struct.pack('<H', len(data)))
-            recording_file.write(data)
-            recording_file.flush()  # Ensure data is written immediately
-        except Exception as e:
-            logger.error(f"Failed to write packet to file: {e}")
-    
-    # Process the packet normally
-    process_packet(data, source="BLE")
-
-
-# ====== Recording Functions ======
-def start_recording(filename: str):
-    """Start recording packets to a file."""
-    global recording_file, packet_count
-    
-    filepath = Path(filename)
-    recording_file = open(filepath, 'wb')
-    packet_count = 0
-    
-    # Write file header
-    header = b'IMU_REC\x01'  # Magic string + version
-    recording_file.write(header)
-    recording_file.flush()
-    
-    logger.info(f"📹 Recording started: {filepath.absolute()}")
-
-
-def stop_recording():
-    """Stop recording and close the file."""
-    global recording_file, packet_count
-    
-    if recording_file is not None:
-        recording_file.close()
-        logger.info(f"⏹️  Recording stopped: {packet_count} packets saved")
-        recording_file = None
-
-
-# ====== Playback Functions ======
-async def playback_from_file(filename: str, speed: float = 1.0):
-    """Play back recorded packets from a file."""
-    global packet_count
-    
-    filepath = Path(filename)
-    if not filepath.exists():
-        logger.error(f"❌ Playback file not found: {filepath}")
-        return
-    
-    logger.info(f"▶️  Starting playback from: {filepath.absolute()}")
-    packet_count = 0
-    
-    with open(filepath, 'rb') as f:
-        # Read and verify header
-        header = f.read(8)
-        if header != b'IMU_REC\x01':
-            logger.error("❌ Invalid file format (missing or wrong header)")
-            return
-        
-        logger.info(f"✅ Valid recording file, playing at {speed}x speed")
-        
-        last_timestamp = None
-        
-        try:
-            while True:
-                # Read packet length
-                length_bytes = f.read(2)
-                if len(length_bytes) < 2:
-                    break  # End of file
-                
-                packet_length = struct.unpack('<H', length_bytes)[0]
-                
-                # Read packet data
-                packet_data = f.read(packet_length)
-                if len(packet_data) < packet_length:
-                    logger.warning("⚠️ Incomplete packet at end of file")
-                    break
-                
-                # Extract timestamp for timing
-                if len(packet_data) >= 9:
-                    timestamp_us = struct.unpack_from('<Q', packet_data, 1)[0]
-                    
-                    # Calculate delay based on timestamps
-                    if last_timestamp is not None and speed > 0:
-                        delay = (timestamp_us - last_timestamp) / 1_000_000.0  # Convert to seconds
-                        delay = delay / speed  # Adjust for playback speed
-                        if delay > 0:
-                            await asyncio.sleep(delay)
-                    
-                    last_timestamp = timestamp_us
-                
-                # Process the packet
-                process_packet(bytearray(packet_data), source="PLAYBACK")
-                
-        except KeyboardInterrupt:
-            logger.info("🛑 Playback stopped by user")
-        
-        logger.info(f"✅ Playback complete: {packet_count} packets played")
-
-
-# ====== Main BLE Routine ======
-async def main(args: Args):
-    # Handle playback mode
+    # ========================================
+    # Check for playback mode
+    # ========================================
     if args.playback:
-        await playback_from_file(args.playback, args.playback_speed)
-        return
-    
-    # Normal BLE mode
-    logger.info("🔍 Starting Bluetooth scan...")
-
-    if args.address:
-        device = await BleakScanner.find_device_by_address(
-            args.address, cb={"use_bdaddr": args.macos_use_bdaddr}
-        )
-    elif args.name:
-        device = await BleakScanner.find_device_by_name(
-            args.name, cb={"use_bdaddr": args.macos_use_bdaddr}
+        logger.info(f"📼 Playback mode: {args.playback}")
+        client = PlaybackClient(
+            args.playback,
+            realtime=not args.fast,
+            speed=args.speed
         )
     else:
-        raise ValueError("Either --name or --address must be provided")
-
-    if device is None:
-        logger.error("❌ Could not find device")
+        client = BLEClient()
+    
+    # ========================================
+    # Setup Components
+    # ========================================
+    parser = PacketParser()
+    converter = IMUConverter()
+    
+    # Per-IMU filters (created dynamically as channels appear)
+    madgwick_filters = {}
+    dead_reckoning_filters = {}
+    
+    # Parse graph mode from arguments
+    try:
+        graph_mode = parse_graph_mode(args)
+    except ValueError as e:
+        logger.error(f"Failed to parse graph mode: {e}")
         return
-
-    logger.info(f"✅ Found device: {device.name} [{device.address}]")
-
-    # Start recording if requested
-    if args.record:
-        start_recording(args.record)
-
-    async with BleakClient(device) as client:
-        if not client.is_connected:
-            logger.error("❌ Failed to connect.")
-            return
-
-        logger.info("✅ Connected to device!")
+    
+    # Create grapher with parsed mode
+    grapher = IMUGrapher(
+        mode=graph_mode,
+        max_points=args.max_points,
+        update_interval=args.update
+    )
+    
+    # Recording storage
+    recorded_packets = [] if args.record else None
+    
+    # ========================================
+    # Connect to BLE Device / Load Recording
+    # ========================================
+    try:
+        if args.playback:
+            logger.info("📂 Loading recording...")
+        else:
+            logger.info("📡 Connecting to BLE device...")
         
-        # List all services and characteristics for debugging
-        if args.debug:
-            for service in client.services:
-                logger.debug(f"Service: {service.uuid}")
-                for char in service.characteristics:
-                    logger.debug(f"  Characteristic: {char.uuid} - {char.properties}")
+        await client.connect()
+        await client.start_streaming()
         
-        await client.start_notify(args.characteristic, notification_handler)
-        logger.info("📡 Streaming data... (Press Ctrl+C to stop)")
-
+        logger.info("✅ Connected and streaming")
+        logger.info(f"📊 Graph mode: {graph_mode}")
+        logger.info(f"🔄 Update interval: every {args.update} packets")
+        
+        if args.playback:
+            if args.fast:
+                logger.info("⚡ Fast playback mode (no timing)")
+            else:
+                logger.info(f"⏱️  Real-time playback (speed: {args.speed}x)")
+    
+    except Exception as e:
+        logger.error(f"❌ Failed to connect: {e}")
+        return
+    
+    # ========================================
+    # Main Processing Loop
+    # ========================================
+    try:
+        packet_count = 0
+        while True:
+            try:
+                # 1. Get raw bytes
+                raw_bytes = await client.get_packet()
+                
+                # 2. Parse → state has channel, timestamp, accel_raw, gyro_raw, mag_raw
+                state = parser.parse(raw_bytes)
+                
+                channel = state['channel']
+                
+                # 3. Convert → state gains accel, gyro, mag (keeps *_raw)
+                state = converter.convert(state)
+                
+                # 4. Ensure filters exist for this IMU channel
+                if channel not in madgwick_filters:
+                    madgwick_filters[channel] = MadgwickFilter(sample_rate=20, beta=0.5)
+                    dead_reckoning_filters[channel] = DeadReckoning(sample_rate=20)
+                    logger.info(f"📍 Initialized processing for IMU channel {channel}")
+                
+                # 5. Madgwick → state gains quaternion, euler
+                state = madgwick_filters[channel].process(state)
+                
+                # 6. Dead reckoning → state gains position, velocity, linear_accel
+                state = dead_reckoning_filters[channel].process(state)
+                
+                # 7. Update graphs
+                grapher.update(
+                    unconverted=state,
+                    converted=state,
+                    madgwick=state,
+                    dead_reckoning=state
+                )
+                
+                # 8. Record complete state
+                if recorded_packets is not None:
+                    recorded_packets.append(state)
+                
+                # 9. Log progress
+                packet_count += 1
+                if packet_count % 100 == 0:
+                    logger.debug(f"📦 Processed {packet_count} packets")
+                
+            except StopIteration:
+                # End of playback
+                logger.info("📼 Reached end of recording")
+                break
+            
+            except ValueError as e:
+                logger.warning(f"⚠️ Packet parsing error: {e}")
+                continue
+            except Exception as e:
+                logger.error(f"❌ Processing error: {e}", exc_info=True)
+                continue
+    
+    except KeyboardInterrupt:
+        logger.info("🛑 Stopping pipeline (Ctrl+C)...")
+    
+    finally:
+        # ========================================
+        # Cleanup and Save
+        # ========================================
         try:
-            # Run until user stops it
-            while client.is_connected:
-                await asyncio.sleep(0.1)
-        except KeyboardInterrupt:
-            logger.info("🛑 Stopping notifications...")
-        finally:
-            await client.stop_notify(args.characteristic)
-            stop_recording()  # Stop recording if active
-            logger.info("🔌 Disconnected cleanly.")
+            await client.stop_streaming()
+            await client.disconnect()
+        except:
+            pass
+        
+        grapher.close()
+        
+        # Save recording if enabled
+        if recorded_packets:
+            try:
+                filename = args.output if args.output else None
+                saved_path = Recording.save(recorded_packets, filename)
+                logger.info(f"💾 Saved {len(recorded_packets)} packets to: {saved_path}")
+            except Exception as e:
+                logger.error(f"❌ Failed to save recording: {e}")
+        
+        logger.info("✅ Pipeline stopped cleanly")
 
 
-# ====== CLI Argument Setup ======
 if __name__ == "__main__":
+    # ========================================
+    # Argument Parser
+    # ========================================
     parser = argparse.ArgumentParser(
-        description="BLE IMU Data Receiver with Recording/Playback - Separate plots per channel",
+        description="ASL Glove IMU Data Pipeline",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Examples:
-  # Live streaming (no recording)
+Mode Examples:
+  # Default - just position tracking
   python main.py
   
-  # Live streaming + record to file
-  python main.py --record test_data.imu
+  # All graphs (12 graphs total!)
+  python main.py --mode all
   
-  # Playback from file
-  python main.py --playback test_data.imu
+  # Debug mode (converted sensors + orientation + position)
+  python main.py --mode debug
   
-  # Playback at 2x speed
-  python main.py --playback test_data.imu --playback-speed 2.0
+  # Just orientation
+  python main.py --mode madgwick
+  
+  # Sensor comparison (raw + converted)
+  python main.py --mode sensor
+  
+  # Custom selection
+  python main.py --mode graph converted madgwick
+  python main.py --mode graph unconverted converted madgwick dead_reckoning
+
+Recording & Playback:
+  # Record a session
+  python main.py --record
+  
+  # Record with custom filename
+  python main.py --record --output my_recording.pkl
+  
+  # Play back a recording (real-time)
+  python main.py --playback recording_20241111_120000.pkl
+  
+  # Play back at 2x speed
+  python main.py --playback recording.pkl --speed 2.0
+  
+  # Play back as fast as possible (no timing)
+  python main.py --playback recording.pkl --fast
+  
+  # Record while analyzing a playback
+  python main.py --playback old.pkl --record --output analyzed.pkl
+  
+Update Interval:
+  # Update plot every 10 packets (better performance)
+  python main.py --update 10
+  
+  # Update plot every packet (real-time but slower)
+  python main.py --update 1
+  
+Debug Logging:
+  # Enable verbose logging
+  python main.py --debug
         """
     )
-
+    
+    # ========================================
+    # Mode Selection
+    # ========================================
     parser.add_argument(
-        "--name",
-        metavar="<n>",
-        default=DEFAULT_NAME,
-        help=f"Bluetooth device name (default: {DEFAULT_NAME})",
+        '--mode', '-m',
+        type=str,
+        default='position',
+        choices=['all', 'debug', 'sensor', 'madgwick', 'position', 'graph'],
+        help="""Graph mode preset:
+  all      - All 12 graphs (raw, converted, orientation, position)
+  debug    - Debug mode: converted + madgwick + position (9 graphs)
+  sensor   - Sensor comparison: raw + converted (6 graphs)
+  madgwick - Just orientation: roll, pitch, yaw (3 graphs)
+  position - Just position: X, Y, Z (3 graphs) [DEFAULT]
+  graph    - Custom selection (requires additional arguments)"""
     )
+    
     parser.add_argument(
-        "--address",
-        metavar="<address>",
-        default=None,
-        help="Bluetooth MAC address",
+        'graph_options',
+        nargs='*',
+        help="""Graph options for '--mode graph':
+  unconverted, converted, madgwick, dead_reckoning (or position/dead)
+  Example: --mode graph converted madgwick"""
     )
+    
+    # ========================================
+    # Graph Configuration
+    # ========================================
     parser.add_argument(
-        "--macos-use-bdaddr",
-        action="store_true",
-        help="Use Bluetooth address instead of UUID on macOS",
+        '--update', '-u',
+        type=int,
+        default=5,
+        metavar='N',
+        help='Update plot every N packets (default: 5, lower = smoother but slower)'
     )
+    
     parser.add_argument(
-        "--characteristic",
-        metavar="<uuid>",
-        default=DEFAULT_CHAR_UUID,
-        help=f"UUID of characteristic to subscribe to (default: {DEFAULT_CHAR_UUID})",
+        '--max-points',
+        type=int,
+        default=200,
+        metavar='N',
+        help='Maximum points in scrolling window (default: 200)'
     )
+    
+    # ========================================
+    # Recording
+    # ========================================
     parser.add_argument(
-        "-d",
-        "--debug",
-        action="store_true",
-        help="Enable debug logging output",
+        '--record', '-r',
+        action='store_true',
+        help='Record all packets (saves to file on exit)'
     )
+    
     parser.add_argument(
-        "--record",
-        metavar="<filename>",
-        default=None,
-        help="Record packets to file while streaming (e.g., test_data.imu)",
+        '--output', '-o',
+        type=str,
+        metavar='FILE',
+        help='Output filename for recording (default: recording_TIMESTAMP.pkl)'
     )
+    
+    # ========================================
+    # Playback
+    # ========================================
     parser.add_argument(
-        "--playback",
-        metavar="<filename>",
-        default=None,
-        help="Play back recorded packets from file (instead of live BLE)",
+        '--playback', '-p',
+        type=str,
+        metavar='FILE',
+        help='Play back recorded session from file (.pkl or .json)'
     )
+    
     parser.add_argument(
-        "--playback-speed",
-        metavar="<speed>",
+        '--speed', '-s',
         type=float,
         default=1.0,
-        help="Playback speed multiplier (default: 1.0, use 0 for no delay)",
+        metavar='X',
+        help='Playback speed multiplier (2.0 = 2x, 0.5 = half speed)'
     )
-
-    args = parser.parse_args(namespace=Args())
-
-    log_level = logging.DEBUG if args.debug else logging.INFO
+    
+    parser.add_argument(
+        '--fast', '-f',
+        action='store_true',
+        help='Fast playback mode (ignore original timing, as fast as possible)'
+    )
+    
+    # ========================================
+    # Logging
+    # ========================================
+    parser.add_argument(
+        '--debug', '-d',
+        action='store_true',
+        help='Enable debug logging'
+    )
+    
+    parser.add_argument(
+        '--quiet', '-q',
+        action='store_true',
+        help='Minimal logging (errors only)'
+    )
+    
+    # ========================================
+    # Parse and Run
+    # ========================================
+    args = parser.parse_args()
+    
+    # Setup logging
+    if args.quiet:
+        log_level = logging.ERROR
+    elif args.debug:
+        log_level = logging.DEBUG
+    else:
+        log_level = logging.INFO
+    
     logging.basicConfig(
         level=log_level,
-        format="%(asctime)-15s %(name)-8s %(levelname)s: %(message)s",
+        format="%(asctime)-15s %(levelname)s: %(message)s"
     )
-
+    
+    # Run main
     asyncio.run(main(args))
