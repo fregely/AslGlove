@@ -61,10 +61,9 @@ static const struct ble_gatt_svc_def gatt_svcs[] = {
     },
     { 0 } // terminator
 };
-/* Add standard services alongside your custom service */
 
 
-/* --------- Access Callbacks (same as you had) ---------- */
+/* --------- Access Callbacks ---------- */
 static int cmd_write_cb(uint16_t conn_handle, uint16_t attr_handle,
                         struct ble_gatt_access_ctxt *ctxt, void *arg)
 {
@@ -246,10 +245,10 @@ int gatt_send_notification(const uint8_t *data, size_t len) {
         return -1; // Failed to allocate mbuf
     }
 
+    // Send om, Over Gatt imu_data_handle, to device described by imu_con_handle
     int rc = ble_gatts_notify_custom(imu_conn_handle, imu_data_handle, om);
     if (rc != 0) {
         ESP_LOGE(TAG, "Failed to send IMU notification: %d", rc);
-        // os_mbuf_free_chain(om); // Free mbuf on failure dont need to do this, NimBLE handles it
         return rc;
     }
 

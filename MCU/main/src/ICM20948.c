@@ -5,6 +5,7 @@
 
 static i2c_master_dev_handle_t imu_dev_handle = NULL;
 
+// Initialise device head
 esp_err_t imu_device_init(i2c_master_bus_handle_t bus_handle, uint32_t scl_speed_hz) {
     i2c_device_config_t dev_cfg = {
         .dev_addr_length = I2C_ADDR_BIT_LEN_7,
@@ -19,6 +20,7 @@ static esp_err_t imu_select_bank(uint8_t bank) {
     return imu_write_reg(ICM20948_REG_BANK_SEL, bank);
 }
 
+// Sets up IMUs so that data can be read, and enables passthrough mode so we can read mag data
 esp_err_t imu_setup() {
     esp_err_t ret;
 
@@ -43,7 +45,6 @@ esp_err_t imu_setup() {
     if (ret != ESP_OK) return ret;
     return ESP_OK;
 }
-
 
 esp_err_t imu_read_reg(uint8_t reg_addr, uint8_t *data, size_t len) {
     // Now communicate with the IMU on that channel

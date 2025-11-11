@@ -14,6 +14,7 @@ QueueHandle_t imu_data_queue = NULL;
 static bool imu_present[MAX_IMUS] = {false};
 static bool mag_present[MAX_IMUS] = {false};
 
+// Creates and Declares the ESP as the Master for the I2C line, and then initialise all other addresses. 
 static void i2c_master_init(void)
 {
     i2c_master_bus_config_t bus_config = {
@@ -31,6 +32,8 @@ static void i2c_master_init(void)
 }
 
 
+// Main Task for Gather IMU data, What RTOS runs. 
+// Tests multiplexer, and then activates all the IMUs and Mags, and notes which ones are present and which are not
 static void imu_task(void *param) {
     ESP_LOGI(TAG, "Starting IMU initialization sequence...");
     
@@ -40,7 +43,6 @@ static void imu_task(void *param) {
         vTaskDelete(NULL);
         return;
     }
-    
     ESP_LOGI(TAG, "Multiplexer detected successfully");
     
     // Initialize all channels
@@ -55,20 +57,20 @@ static void imu_task(void *param) {
         
         // Try to initialize IMU
         if(imu_setup() == ESP_OK) {
-            ESP_LOGI(TAG, "✓ IMU initialized on channel %d", ch);
+            ESP_LOGI(TAG, "IMU initialized on channel %d", ch);
             imu_present[ch] = true;
             imu_count++;
             
             // Only try magnetometer if IMU works
             if(ak09916_setup() == ESP_OK) {
-                ESP_LOGI(TAG, "✓ Magnetometer initialized on channel %d", ch);
+                ESP_LOGI(TAG, "Magnetometer initialized on channel %d", ch);
                 mag_present[ch] = true;
                 mag_count++;
             } else {
-                ESP_LOGW(TAG, "✗ Magnetometer not detected on channel %d", ch);
+                ESP_LOGW(TAG, "Magnetometer not detected on channel %d", ch);
             }
         } else {
-            ESP_LOGW(TAG, "✗ No IMU detected on channel %d", ch);
+            ESP_LOGW(TAG, "No IMU detected on channel %d", ch);
         }
         
         vTaskDelay(pdMS_TO_TICKS(50));
@@ -90,6 +92,7 @@ static void imu_task(void *param) {
     ESP_LOGI(TAG, "========================================");
     ESP_LOGI(TAG, "");
     
+    // Kills the task if their are no IMUs, to save power. 
     if(imu_count == 0) {
         ESP_LOGE(TAG, "No IMUs detected! Task will exit.");
         vTaskDelete(NULL);
@@ -103,7 +106,7 @@ static void imu_task(void *param) {
         for(uint8_t ch = 0; ch < MAX_IMUS; ch++) {
             // Skip channels without working IMUs
             if(!imu_present[ch]) {
-                continue;
+                continue; // Will have it go to next of the for loop
             }
             
             imu_packet_t packet;
@@ -116,12 +119,12 @@ static void imu_task(void *param) {
             esp_err_t imu_ret = imu_data_get(packet.raw_data);
             if (imu_ret != ESP_OK) {
                 ESP_LOGW(TAG, "Failed to read IMU data on channel %d", ch);
-                continue;  // Skip to next channel
+                continue;  // Skips to next channel
             }
             
             ESP_LOGD(TAG, "Read IMU data from channel %d", ch);
             
-            // Read magnetometer data (if present)
+            // Read magnetometer data
             if(mag_present[ch]) {
                 esp_err_t mag_ret = ak09916_read_mag_data(packet.mag_data);
                 if(mag_ret != ESP_OK) {
@@ -129,11 +132,11 @@ static void imu_task(void *param) {
                     memset(packet.mag_data, 0, 6);
                 }
             } else {
-                // No magnetometer on this channel
+                // No magnetometer on this channel sets mag data to 0
                 memset(packet.mag_data, 0, 6);
             }
             
-            // Send packet (IMU data is good, mag might be zeros)
+            // Queues packet
             if (xQueueSend(imu_data_queue, &packet, pdMS_TO_TICKS(10)) != pdTRUE) {
                 ESP_LOGE(TAG, "Failed to send IMU data to queue (queue full?)");
             } else {
@@ -148,12 +151,12 @@ static void imu_task(void *param) {
         vTaskDelay(pdMS_TO_TICKS(50));
 
         // Currently running 1.4kB/s can go up to 10kB/s if needed
-        // After testing should increase speed, by decreasing delay to 5, and 20, and increasing the I2C speed queueue size to 100. 
+        // After testing should increase speed, by decreasing delay to 5, and 20, and increasing the I2C speed queue size to 100. 
         // 3.2Kb/s 20Hz/IMU vs current of 9 Hz/IMU
     }
 }
 
-
+// The entry point for the task
 void start_imu_task(void) {
     i2c_master_init();
     
