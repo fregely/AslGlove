@@ -28,6 +28,36 @@ class IMUConverter:
         # MAGNETOMETER: AK09916 inside ICM-20948
         # The magnetometer has a fixed scale of 0.15 µT per LSB
         self.mag_scale = 0.15  # µT/LSB
+    
+    def set_gyro_bias(self, bias: np.ndarray):
+        """
+        Set gyro bias from calibration.
+        
+        Parameters:
+        -----------
+        bias : np.ndarray
+            Gyro bias [gx, gy, gz] in °/s
+        """
+        self.gyro_bias = bias.copy()
+        
+    def converter(self, packet: dict) -> dict:
+        accel_raw = packet['accel']
+        gyro_raw = packet['gyro']
+        mag_raw = packet['mag']
+
+        accel_g = self.convert_accelerometer(*accel_raw)
+        gyro_deg = self.convert_gyroscope(*gyro_raw)
+        mag_ut = self.convert_magnetometer(*mag_raw)
+
+        return {
+            # Keep original data
+            'channel': packet['channel'],
+            'timestamp_us': packet['timestamp_us'],
+            'accel': accel_g,
+            'gyro': gyro_deg,
+            'mag': mag_ut,
+        }
+
 
     def convert_accelerometer(self, raw_x, raw_y, raw_z):
         """
@@ -108,26 +138,3 @@ class IMUConverter:
         
         return (mx_ut, my_ut, mz_ut)
     
-    def process_all(self, accel_raw, gyro_raw, mag_raw):
-        """
-        Process all three sensors at once.
-        
-        Parameters:
-        -----------
-        accel_raw : tuple of (x, y, z) raw values
-        gyro_raw : tuple of (x, y, z) raw values  
-        mag_raw : tuple of (x, y, z) raw values
-        
-        Returns:
-        --------
-        dict : All converted values with labels
-        """
-        ax_g, ay_g, az_g = self.convert_accelerometer(*accel_raw)
-        gx_deg, gy_deg, gz_deg = self.convert_gyroscope(*gyro_raw)
-        mx_ut, my_ut, mz_ut = self.convert_magnetometer(*mag_raw)
-        
-        return {
-            'accel_g': (ax_g, ay_g, az_g),
-            'gyro_deg_s': (gx_deg, gy_deg, gz_deg),
-            'mag_ut': (mx_ut, my_ut, mz_ut)
-        }

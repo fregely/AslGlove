@@ -8,6 +8,22 @@ class MadgwickFilter:
         self.dt = 1.0 / sample_rate  # Sample rate in Hz
         self.beta = beta  # Algorithm gain i.e how much to trust the accelerometer/magnetometer vs the gyroscope
 
+    def process(self, packet: dict) -> dict:
+        gx, gy, gz = packet['gyro']
+        ax, ay, az = packet['accel']
+        mx, my, mz = packet['mag']
+
+        self.update(gx, gy, gz, ax, ay, az, mx, my, mz)
+        quaternion = self.get_quaternion()
+        euler = self.get_euler_angles()
+
+        return {
+            'channel': packet['channel'],
+            'timestamp_us': packet['timestamp_us'],
+            'quaternion' : quaternion,
+            'euler' : euler,
+            'accel': packet['accel']
+        }
 
     def update(self, gx, gy, gz, ax, ay, az, mx, my, mz):
         """

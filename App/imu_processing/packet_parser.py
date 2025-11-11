@@ -35,8 +35,7 @@ class PacketParser:
         return {
             'channel': channel,
             'timestamp_us': timestamp_us,
-            'accel_raw': (ax_raw, ay_raw, az_raw),
-            'gyro_raw': (gx_raw, gy_raw, gz_raw),
-            'mag_raw': (mx_raw, my_raw, mz_raw),
-            'raw_bytes': data,  # Keep for recording
+            'accel': (ax_raw, ay_raw, az_raw),
+            'gyro': (gx_raw, gy_raw, gz_raw),
+            'mag': (mx_raw, my_raw, mz_raw),
         }

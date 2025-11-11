@@ -22,6 +22,35 @@ class DeadReckoning:
         self.position = np.zeros(3)  # x, y, z
         self.gravity = np.array([0, 0, -9.81])  # m/s²
 
+        # Thresholds for stationary detection
+        self.stationary_accel_threshold = 0.05  # g
+        self.stationary_gyro_threshold = 5.0    # deg/s (not used yet)
+        
+    def process(self, packet: dict) -> dict:
+
+            # Extract data
+        quaternion = np.array(packet['quaternion'])
+        accel_g = np.array(packet['accel'])
+        
+        # Detect if stationary (simple method: check if accel magnitude ≈ 1g)
+        accel_magnitude = np.linalg.norm(accel_g)
+        is_stationary = bool(abs(accel_magnitude - 1.0) < self.stationary_accel_threshold)
+        
+        # Update position estimate
+        result = self.update(quaternion, accel_g, stationary=is_stationary)
+        
+        # Return complete state
+        return {
+            'channel': packet['channel'],
+            'timestamp_us': packet['timestamp_us'],
+            'quaternion': packet['quaternion'],
+            'euler': packet['euler'],
+            'position': tuple(result['position']),
+            'velocity': tuple(result['velocity']),
+            'linear_accel': tuple(result['linear_accel']),
+            'is_stationary': is_stationary,
+        }
+    
     def quaternion_rotate_vector(self, q, v):
         """Rotate vector v by quaternion q.
            q : Quaternion as [w, x, y, z]

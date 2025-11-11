@@ -5,7 +5,8 @@ import logging
 from typing import Optional
 from bleak import BleakClient, BleakScanner
 from bleak.backends.characteristic import BleakGATTCharacteristic
-from .packet_parser import PacketParser  # ← Import the parser
+from imu_processing.packet_parser import PacketParser
+
 
 logger = logging.getLogger(__name__)
 
@@ -13,21 +14,19 @@ logger = logging.getLogger(__name__)
 class BLEClient:
     """
     Handles BLE connection and receives raw packet bytes.
-    Uses PacketParser to parse the bytes.
+    Returns raw bytes without any parsing.
     """
     
     def __init__(
         self, 
         device_name: str = "ASL_Glove", 
         characteristic_uuid: str = "c4e7a180-7b2f-4c95-bfc5-1d5c62123456"
-        data: bytearray
     ):
         self.device_name = device_name
         self.characteristic_uuid = characteristic_uuid
-        self.packet_queue = asyncio.Queue()
+        self.packet_queue = asyncio.Queue()  # Stores raw bytearray
         self.client: Optional[BleakClient] = None
         self.is_connected = False
-        self.data = 0
         
     async def connect(self, address: Optional[str] = None, macos_use_bdaddr: bool = False):
         """Connect to the BLE device."""
@@ -43,7 +42,7 @@ class BLEClient:
             )
         
         if device is None:
-            raise ConnectionError(f"❌ Could not find device: {self.device_name}")
+            raise ConnectionError(f"Could not find device: {self.device_name}")
         
         logger.info(f"✅ Found device: {device.name} [{device.address}]")
         
@@ -51,7 +50,7 @@ class BLEClient:
         await self.client.connect()
         
         if not self.client.is_connected:
-            raise ConnectionError("❌ Failed to connect to device")
+            raise ConnectionError("Failed to connect to device")
         
         self.is_connected = True
         logger.info("✅ Connected!")
@@ -71,14 +70,14 @@ class BLEClient:
         """Stop receiving notifications."""
         if self.client and self.is_connected:
             await self.client.stop_notify(self.characteristic_uuid)
-            logger.info("🛑 Stopped streaming")
+            logger.info("Stopped streaming")
     
     async def disconnect(self):
         """Disconnect from device."""
         if self.client and self.is_connected:
             await self.client.disconnect()
             self.is_connected = False
-            logger.info("🔌 Disconnected")
+            logger.info("Disconnected")
     
     def _notification_handler(
         self, 
@@ -86,15 +85,15 @@ class BLEClient:
         data: bytearray
     ):
         """Internal: called when BLE data arrives."""
-        try:
-            # Use PacketParser to parse the bytes
-            packet = self.parser.parse(data)  
-            self.packet_queue.put_nowait(packet)
-        except Exception as e:
-            logger.error(f"⚠️ Failed to parse packet: {e}")
+        # Just queue the raw bytes - no parsing!
+        self.packet_queue.put_nowait(data)
+        logger.debug(f"Received {len(data)} bytes")
     
-    async def get_packet(self) -> dict:
-        """Get the next packet. Waits if none available."""
+    async def get_packet(self) -> bytearray:
+        """
+        Get the next raw packet bytes from BLE.
+        Returns the exact bytearray received from the device.
+        """
         return await self.packet_queue.get()
     
     async def run_until_disconnected(self, poll_interval: float = 0.1):
@@ -104,3 +103,4 @@ class BLEClient:
                 await asyncio.sleep(poll_interval)
         except KeyboardInterrupt:
             logger.info("🛑 User interrupted")
+
