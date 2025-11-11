@@ -106,15 +106,4 @@ git checkout -- <filename>
 ```
 --- 
 
-source venv/bin/activate
 
-# Play at normal speed
-python main.py --playback my_data.imu
-
-# Play at 2x speed
-python main.py --playback my_data.imu --playback-speed 2.0
-
-# Play as fast as possible (no delays)
-python main.py --playback my_data.imu --playback-speed 0
-
-python main.py --record test_data.imu
