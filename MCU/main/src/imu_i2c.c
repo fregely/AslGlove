@@ -49,7 +49,7 @@ static void imu_task(void *param) {
     uint8_t imu_count = 0;
     uint8_t mag_count = 0;
     
-    for(uint8_t ch = 0; ch < MAX_IMUS; ch++) {
+    for(uint8_t ch = 0; ch <= MAX_IMUS; ch++) {
         ESP_LOGI(TAG, "Scanning channel %d...", ch);
         
         // Select channel ONCE for all operations on this channel
