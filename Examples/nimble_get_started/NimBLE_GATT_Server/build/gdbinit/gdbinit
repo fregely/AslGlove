@@ -1,0 +1,2 @@
+source /home/fregel/AslGlove/Examples/nimble_get_started/NimBLE_GATT_Server/build/gdbinit/symbols
+source /home/fregel/AslGlove/Examples/nimble_get_started/NimBLE_GATT_Server/build/gdbinit/connect

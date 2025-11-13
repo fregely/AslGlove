@@ -76,7 +76,7 @@ cat ~/.ssh/id_rsa.pub
 ## Pushing changes 
 1. Open folder in terminal
 ```bash
-mv AslGlove
+cd AslGlove
 ```
 2. Go to new dev branch
 ```bash
@@ -92,7 +92,7 @@ git commit -m "description of changes"
 ``` 
 5. Push changes to repo
 ```bash
-git push
+git push --set-upstream origin dev/yourName
 ```
 6. Open github web browser and make a Pull request
 
@@ -137,12 +137,5 @@ git log --oneline
 git checkout -- <filename>
 ```
 --- 
-
-## Setting up Rtos Environment TODO
-https://docs.espressif.com/projects/esp-idf/en/latest/esp32/get-started/linux-macos-setup.html
-
-
-
-
 
 
