@@ -32,6 +32,20 @@ Requirements
     	•	Select Python: Select Interpreter
     	•	Choose the one that says .venv
 
+5. Commands to souce IDF:
+   ```bash
+   # 1) Go to your esp-idf install directory
+	cd ~/esp/esp-idf
+	
+	# 2) Activate ESP-IDF environment (for zsh)
+	source export.sh    # or: . export.sh
+	
+	# 3) Go back to your project
+	cd /Users/camilleferrell/Desktop/AslGlove/MCU
+	
+	# 4) Now this should work:
+	idf.py build flash monitor
+	```
     Now you can run scripts directly with the Run ▶️ button or F5.
 
 ---
