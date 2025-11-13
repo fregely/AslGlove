@@ -9,9 +9,7 @@ Logs FPS, frame count, LED index, and blob coordinates to a timestamped CSV file
 # pylint: disable=E1101
 
 import time
-import csv
 from typing import Any
-from datetime import datetime
 import serial  # type: ignore
 import serial.tools.list_ports  # type: ignore
 import numpy as np
@@ -83,15 +81,6 @@ def main() -> None:
     fps = 0.0
     frame_count = 0
     led_index = 0  # Which LED was active during this frame
-
-    # --- Timestamped CSV Logger ---
-    """
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    log_filename = f"detections_log_{timestamp}.csv"
-    log_file = open(log_filename, mode="w", newline="", encoding="utf-8")
-    csv_writer = csv.writer(log_file)
-    csv_writer.writerow(["Frame", "Timestamp", "FPS", "LED", "BlobCount", "BlobCenters"])
-    print(f"📁 Logging to {log_filename}") """
     
     # --- Setup OpenCV display window ---
     cv2.namedWindow("Detections", cv2.WINDOW_NORMAL)
@@ -174,17 +163,6 @@ def main() -> None:
                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2, cv2.LINE_AA)    # (10, 25) and (10, 55) are pixel coordinates (x, y) for the text position.
         cv2.putText(frame, f"Frame: {frame_count}", (10, 55),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 200, 255), 2, cv2.LINE_AA)    # (0, 255, 255) = yellow color (BGR format), (0, 200, 255) = orange-ish.  
-
-        # --- CSV logging ---
-        """
-        csv_writer.writerow([
-            frame_count,          # Frame index
-            f"{curr_time:.4f}",   # Timestamp with 4 decimal precision
-            f"{fps:.2f}",         # FPS value with 2 decimal precision
-            len(blob_centers),    # Number of blobs detected in this frame
-            blob_centers          # List of (x, y) coordinates of blob centers
-        ])
-        """
 
         # --- Show one view ---
         # Show views
