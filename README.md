@@ -1,13 +1,45 @@
-# ASL Glove Project  
-Capstone 2025
-Authors 
-- Clara Small
-- David Noble
-- Lauren Hutchison
-- Camille Ferrell
-- Norah Bumrah
+# ASL Glove Project -- Environment Setup Guide :)
+This guide walks you through setting up the Python development environment for the ASL Glove project. It uses a virtual environment to isolate dependencies like OpenCV and ensure everything runs consistently across machines.
 
-Guides for each app can be found in the README.md for each
+Requirements
+	•	Python 3.9 or higher (recommended)
+	•	Git
+	•	VS Code (recommended)
+	•	macOS or Linux (Windows should work but steps may differ slightly)
+
+ 1. Clone the Repository
+    ```bash
+    git clone <your-repo-url>
+    cd AslGlove
+    ```
+ 2. Create and Activate the Virtual Envrionment
+    ```bash
+    python3 -m venv .venv
+    source .venv/bin/activate
+    ```
+    You should see (.venv) at the beginning of your terminal prompt when activated.
+ 3. Install Project Dependencies
+    ```bash
+    pip install -r requirements.txt
+    ```
+    If you don't see requirements.txt, you can manually install:
+    ```bash
+    pip install opencv-python numpy
+    ```
+ 4. VS Code Setup
+    If you're using VS Code:
+    	•	Press Cmd+Shift+P (or Ctrl+Shift+P on Windows)
+    	•	Select Python: Select Interpreter
+    	•	Choose the one that says .venv
+
+    Now you can run scripts directly with the Run ▶️ button or F5.
+
+---
+openCV blob detection guide 
+https://opencv.org/blog/blob-detection-using-opencv/
+^ gives both python and C++, I (david) would prefer to use C++ just to keep all the programs 
+in c/c++ but if your more comfortable with python you can us that instead
+
 ---
 ## Git Setup (First Time)  
 
