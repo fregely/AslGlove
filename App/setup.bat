@@ -21,7 +21,7 @@ call venv\Scripts\activate.bat
 
 REM Install packages
 python -m pip install --upgrade pip
-pip install bleak matplotlib numpy scipy
+pip install -r requirements.txt
 
 echo.
 echo === Setup Complete! ===
