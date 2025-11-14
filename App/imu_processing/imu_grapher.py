@@ -1,8 +1,14 @@
+# imu_grapher.py
 """
-imu_grapher.py - Detailed pipeline-compatible IMU grapher
+IMU grapher - Detailed pipeline-compatible IMU grapher
+"""
+import sys
 
-Separates each sensor type and axis into individual graphs for easier debugging.
-"""
+import platform
+import matplotlib
+
+if platform.system() == 'Windows':
+    matplotlib.use('qt5agg')
 
 import matplotlib.pyplot as plt
 from collections import deque, defaultdict
@@ -194,6 +200,10 @@ class IMUGrapher:
             axes[i].set_visible(False)
         
         plt.tight_layout()
+
+        plt.tight_layout()
+        plt.show(block=False)  # Non-blocking show
+        plt.pause(0.001)  # Small pause to let GUI initialize
     
     def _setup_sensor_axis(self, ax, title, ylabel, color='black'):
         """Setup axis for sensor data (accel/gyro/mag)."""
@@ -469,9 +479,12 @@ class IMUGrapher:
             else:
                 ax.autoscale_view(scalex=True, scaley=True)
         
-        self.fig.canvas.draw()
-        self.fig.canvas.flush_events()
-        plt.pause(0.001)
+        try:
+            self.fig.canvas.draw_idle()  # Use draw_idle instead of draw
+            self.fig.canvas.flush_events()
+            # Don't use plt.pause() here - it can interfere with asyncio
+        except:
+            pass  # Ignore drawing errors
     
     def reset_channel(self, channel: int):
         """Clear data for a specific channel."""

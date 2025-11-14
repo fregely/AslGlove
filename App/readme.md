@@ -4,34 +4,23 @@ Real-time IMU data processing and visualization for ASL gesture recognition.
 
 ## Setup
 
+### Windows
+#### First Time running 
 ```bash
-# Clone repository
-git clone <your-repo-url>
-cd asl-glove
-
-# Open the App
+# Go to main directory, and run setup.bat in admin mode
 cd App
-
-# Create virtual environment
-python -m venv venv
-
-# Activate virtual environment
-source venv/bin/activate  # Linux/Mac
-venv\Scripts\activate     # Windows
-
-# Install dependencies (not set up dont do)
-pip install -r requirements.txt
+venv\Scripts\activate.bat
 ```
-
-## Run
-
+#### Running the program
 ```bash
-# Make sure virtual environment is activated
-source venv/bin/activate
-
-# Run with default settings
-python main.py
+cmd 
+cd App
+venv\Scripts\activate.bat #Only have to do on first run
+python main.py # Will record the data for later playback, no graphing
+python main.py --playback recording_[timestamp] # Will playback and graph it
 ```
+
+## Linux / Mac TBD 
 
 ## Commands
 
