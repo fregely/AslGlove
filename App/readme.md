@@ -13,6 +13,8 @@ venv\Scripts\activate.bat
 ```
 #### Running the program
 ```bash
+cmd 
+cd App
 venv\Scripts\activate.bat #Only have to do on first run
 python main.py # Will record the data for later playback, no graphing
 python main.py --playback recording_[timestamp] # Will playback and graph it
