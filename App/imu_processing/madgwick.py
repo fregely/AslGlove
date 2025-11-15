@@ -1,177 +1,218 @@
 import numpy as np
 import math
 
-
 class MadgwickFilter:
-    def __init__(self, sample_rate=20, beta=1.0):
-        self.q = np.array([1.0, 0.0, 0.0, 0.0])  # Quaternion
-        self.dt = 1.0 / sample_rate  # Sample rate in Hz
-        self.beta = beta  # Algorithm gain i.e how much to trust the accelerometer/magnetometer vs the gyroscope
+    """
+    Madgwick AHRS filter implementation based on the original paper.
+    
+    """
+    
+    def __init__(self, sample_rate=100, beta=None, zeta=None):
+        """
+        Args:
+            sample_rate: Sampling frequency in Hz
+            beta: Algorithm gain (how much to trust accel/mag vs gyro)
+            zeta: Gyroscope bias drift compensation gain
+        """
+        self.dt = 1.0 / sample_rate
+        
+        # Default values from the paper
+        gyro_meas_error = math.radians(5.0)  # 5 deg/s gyro error Look at data sheet to get these
+        gyro_meas_drift = math.radians(0.2)  # 0.2 deg/s/s drift Look at data sheet to get these, just from paper
+        
+        self.beta = beta if beta is not None else math.sqrt(3.0/4.0) * gyro_meas_error
+        self.zeta = zeta if zeta is not None else math.sqrt(3.0/4.0) * gyro_meas_drift
+        
+        # State variables
+        self.q = np.array([1.0, 0.0, 0.0, 0.0])  # Quaternion [w, x, y, z]
+        self.gyro_bias = np.zeros(3)  # Gyroscope bias estimate [wx, wy, wz]
+        
+        # Reference direction of flux in earth frame
+        self.b_x = 1.0
+        self.b_z = 0.0
 
     def process(self, packet: dict) -> dict:
-        gx, gy, gz = packet['gyro']
-        ax, ay, az = packet['accel']
-        mx, my, mz = packet['mag']
+        gyro = packet['gyro']
+        accel = packet['accel']
+        mag = packet['mag']
 
-        self.update(gx, gy, gz, ax, ay, az, mx, my, mz)
-        quaternion = self.get_quaternion()
-        euler = self.get_euler_angles()
+        self.update(gyro, accel, mag)
 
         packet['quaternion'] = self.get_quaternion()
         packet['euler'] = self.get_euler_angles()
         
         return packet
-
-    def update(self, gx, gy, gz, ax, ay, az, mx, my, mz):
+    
+    def update(self, gyro, accel, mag):
         """
-        Update orientation using gyroscope, accelerometer, and magnetometer
+        Update the filter with new sensor readings.
         
         Args:
-            gx, gy, gz: Angular velocity in rad/s
-            ax, ay, az: Acceleration in g
-            mx, my, mz: Magnetic field in µT
+            gyro: Angular velocity [wx, wy, wz] in rad/s 
+            accel: Acceleration [ax, ay, az] in g 
+            mag: Magnetic field [mx, my, mz] in any unit 
         """
-        q0, q1, q2, q3 = self.q
+        # Convert to numpy arrays if needed
+        gyro = np.array(gyro, dtype=float)
+        accel = np.array(accel, dtype=float)
+        mag = np.array(mag, dtype=float)
         
-        # ========================================
-        # Normalize sensors
-        # ========================================
-        accel_norm = np.sqrt(ax*ax + ay*ay + az*az)
+        # Normalize accelerometer and magnetometer measurements
+        accel_norm = np.linalg.norm(accel)
         if accel_norm == 0:
             return
-        ax /= accel_norm
-        ay /= accel_norm
-        az /= accel_norm
+        accel = accel / accel_norm
         
-        mag_norm = np.sqrt(mx*mx + my*my + mz*mz)
+        mag_norm = np.linalg.norm(mag)
         if mag_norm == 0:
             return
-        mx /= mag_norm
-        my /= mag_norm
-        mz /= mag_norm
-        # ========================================
-        # MOTION DETECTION
-        # ========================================
-        # Detect if IMU is accelerating (not just gravity)
-        accel_magnitude_error = abs(accel_norm - 1.0)  # Should be 1.0g if only gravity
+        mag = mag / mag_norm
         
-        # Detect if IMU is rotating fast
-        gyro_magnitude = math.sqrt(gx*gx + gy*gy + gz*gz)
+        # Unpack quaternion 
+        q0, q1, q2, q3 = self.q
+        ax, ay, az = accel
+        mx, my, mz = mag
+        # Pre-compute repeated terms
+        _2q0 = 2.0 * q0
+        _2q1 = 2.0 * q1
+        _2q2 = 2.0 * q2
+        _2q3 = 2.0 * q3
+        _2b_x = 2.0 * self.b_x
+        _2b_z = 2.0 * self.b_z
         
-        # Reduce beta during high dynamics
-        effective_beta = self.beta
-        if accel_magnitude_error > 0.2 or gyro_magnitude > math.radians(200):  # >200°/s
-            # High dynamics - trust gyro more
-            effective_beta = self.beta * 0.05
-        elif accel_magnitude_error > 0.08 or gyro_magnitude > math.radians(50):  # >50°/s
-            # Moderate dynamics - reduce correction
-            effective_beta = self.beta * 0.5
+        
+        # Objective function (gradient descent direction) (EQ25 & 29)
+        # These represent the error between measured and expected directions
+        f_a = np.array([
+            # Accelerometer error (gravity direction)
+            _2q1*q3 - _2q0*q2 - ax,
+            _2q0*q1 + _2q2*q3 - ay,
+            1.0 - _2q1*q1 - _2q2*q2 - az
+        ])  
+        f_m = np.array([
+            # Magnetometer error (magnetic field direction)
+            _2b_x*(0.5 - q2*q2 - q3*q3) + _2b_z*(q1*q3 - q0*q2) - mx,
+            _2b_x*(q1*q2 - q0*q3) + _2b_z*(q0*q1 + q2*q3) - my,
+            _2b_x*(q0*q2 + q1*q3) + _2b_z*(0.5 - q1*q1 - q2*q2) - mz
+        ])
+        
+        # Jacobian matrix - represents how quaternion changes affect the objective (EQ26 & 30)
+        J_a = np.array([
+            [-_2q2,              _2q3,              -_2q0,             _2q1],
+            [_2q1,               _2q0,              _2q3,              _2q2],
+            [0,                  -4*q1,             -4*q2,             0]
+            ])
+        J_m = np.array([
+            [-_2b_z*q2,          _2b_z*q3,            -4*self.b_x*q2-_2b_z*q0,  -4*self.b_x*q3+_2b_z*q1],
+            [-_2b_x*q3+_2b_z*q1, _2b_x*q2+_2b_z*q0,   _2b_x*q1+_2b_z*q3,        -_2b_x*q0+_2b_z*q2],
+            [_2b_x*q2,           _2b_x*q3-2*_2b_z*q1, _2b_x*q0-2*_2b_z*q2,   _2b_x*q1]
+        ])
+        
+        # Compute gradient (J^T * f) (EQ 34)
+        grad_a = J_a.T @ f_a
+        grad_m = J_m.T @ f_m
+        gradient = grad_a + grad_m
+        gradient = gradient / np.linalg.norm(gradient)
+        
 
-        # ========================================
-        # Calculate adaptive magnetometer weight
-        # ========================================
-        # Reduce mag influence at steep pitch angles to prevent oscillation
-        sinp = 2*(q0*q1 + q2*q3)
-        sinp = max(-1.0, min(1.0, sinp))  # Clamp to avoid domain errors
-        mag_weight = math.sqrt(1.0 - sinp*sinp)  # |cos(pitch)|
+        # Compute gyroscope bias correction 
+ 
+        # Convert gradient to angular error 
+        q_conj = np.array([q0, -q1, -q2, -q3]) # Conjugate 
+        # 2 * q_conjugate ⊗ gradient (EQ 47)
+        gyro_error = 2.0 * self._quaternion_multiply(q_conj, gradient)[1:]  # Extract xyz components
         
-        # ========================================
-        # Step 1: Gyroscope derivative
-        # ========================================
-        q_dot_gyro = 0.5 * np.array([
-            -q1*gx - q2*gy - q3*gz,
-            q0*gx + q2*gz - q3*gy,
-            q0*gy - q1*gz + q3*gx,
-            q0*gz + q1*gy - q2*gx
-        ])
+        # Integrate gyroscope bias (EQ 48)
+        self.gyro_bias += gyro_error * self.dt * self.zeta
         
-        # ========================================
-        # Step 2: Accelerometer correction
-        # ========================================
-        # Expected gravity direction in sensor frame
-        gx_expected = 2*(q1*q3 - q0*q2)
-        gy_expected = 2*(q0*q1 + q2*q3)
-        gz_expected = q0*q0 - q1*q1 - q2*q2 + q3*q3
+        # Remove bias from gyroscope measurement (EQ 49)
+        gyro_corrected = gyro - self.gyro_bias
         
-        # Cross product error
-        error_accel_x = gy_expected*az - gz_expected*ay
-        error_accel_y = gz_expected*ax - gx_expected*az
-        error_accel_z = gx_expected*ay - gy_expected*ax
+     
+        # Compute quaternion rate from gyroscope
+       
+        # Pure gyroscope quaternion rate (EQ12)
+        q_dot_gyro = 0.5 * self._quaternion_multiply(self.q, np.array([0, *gyro_corrected]))
         
-        # ========================================
-        # Step 3: Magnetometer correction
-        # ========================================
-        # Rotate mag into world frame
-        hx = 2*(mx*(0.5 - q2*q2 - q3*q3) + my*(q1*q2 - q0*q3) + mz*(q1*q3 + q0*q2))
-        hy = 2*(mx*(q1*q2 + q0*q3) + my*(0.5 - q1*q1 - q3*q3) + mz*(q2*q3 - q0*q1))
-        hz = 2*(mx*(q1*q3 - q0*q2) + my*(q2*q3 + q0*q1) + mz*(0.5 - q1*q1 - q2*q2))
+     
+        # compute then integrate the estimated quaternion rate
         
-        # Reference field
-        bx = math.sqrt(hx*hx + hy*hy)
-        bz = hz
+        # Combine gyroscope rate with gradient correction (EQ43)
+        q_dot = q_dot_gyro - (self.beta * gradient)
         
-        # Expected mag in sensor frame
-        mx_expected = 2*bx*(0.5 - q2*q2 - q3*q3) + 2*bz*(q1*q3 - q0*q2)
-        my_expected = 2*bx*(q1*q2 - q0*q3) + 2*bz*(q0*q1 + q2*q3)
-        mz_expected = 2*bx*(q1*q3 + q0*q2) + 2*bz*(0.5 - q1*q1 - q2*q2)
-        
-        # Cross product error (scaled by pitch angle)
-        error_mag_x = (my_expected*mz - mz_expected*my) * mag_weight
-        error_mag_y = (mz_expected*mx - mx_expected*mz) * mag_weight
-        error_mag_z = (mx_expected*my - my_expected*mx) * mag_weight
-        
-        # ========================================
-        # Step 4: Combine errors
-        # ========================================
-        error_x = error_accel_x + error_mag_x
-        error_y = error_accel_y + error_mag_y
-        error_z = error_accel_z + error_mag_z
-        
-        # ========================================
-        # Step 5: Calculate gradient
-        # ========================================
-        gradient = np.array([
-            2*q2*error_x - 2*q1*error_y,
-            2*q3*error_x + 2*q0*error_y - 4*q1*error_z,
-            2*q0*error_x + 2*q3*error_y - 4*q2*error_z,
-            2*q1*error_x + 2*q2*error_y
-        ])
-        
-        gradient_norm = np.linalg.norm(gradient)
-        if gradient_norm > 0:
-            gradient /= gradient_norm
-        
-        q_dot_correction = -effective_beta * gradient
-        
-        # ========================================
-        # Step 6: Combine and integrate
-        # ========================================
-        q_dot = q_dot_gyro + q_dot_correction
+        # Integrate
         self.q = self.q + q_dot * self.dt
         
-        # ========================================
-        # Step 7: Normalize quaternion
-        # ========================================
-        magnitude = np.linalg.norm(self.q)
-        self.q = self.q / magnitude
-
-
+        # Normalize quaternion
+        self.q = self.q / np.linalg.norm(self.q)
+        
+       
+        # Update reference direction of magnetic field
+    
+        
+        # Rotate magnetometer measurement into earth frame (EQ 45)
+        h = self._rotate_vector_by_quaternion(self.q, mag)
+        
+        # Reference direction has only x and z components (north, down)
+        self.b_x = math.sqrt(h[0]*h[0] + h[1]*h[1])
+        self.b_z = h[2]
+    
+    def _quaternion_multiply(self, q1, q2):
+        """
+        Multiply two quaternions: q1 * q2
+        Both quaternions in [w, x, y, z] format
+        """
+        w1, x1, y1, z1 = q1
+        w2, x2, y2, z2 = q2
+        
+        return np.array([
+            w1*w2 - x1*x2 - y1*y2 - z1*z2,
+            w1*x2 + x1*w2 + y1*z2 - z1*y2,
+            w1*y2 - x1*z2 + y1*w2 + z1*x2,
+            w1*z2 + x1*y2 - y1*x2 + z1*w2
+        ])
+    
+    def _rotate_vector_by_quaternion(self, q, v):
+        """
+        Rotate vector v by quaternion q
+        Returns: q * [0, v] * q_conjugate
+        """
+        v_quat = np.array([0, v[0], v[1], v[2]])
+        q_conj = np.array([q[0], -q[1], -q[2], -q[3]])
+        
+        result = self._quaternion_multiply(
+            self._quaternion_multiply(q, v_quat),
+            q_conj
+        )
+        
+        return result[1:]  # Return only xyz components
+    
     def get_quaternion(self):
+        """Return current orientation as quaternion [w, x, y, z]"""
         return self.q.copy()
     
     def get_euler_angles(self):
-        #c Convert quaternion to Euler angles (roll, pitch, yaw)
+        """
+        Convert quaternion to Euler angles (roll, pitch, yaw) in degrees
+        Returns: (roll, pitch, yaw) in degrees
+        """
         w, x, y, z = self.q
-        roll = math.atan2(2.0 * (y * z + w * x), 1.0 - 2.0 * (x * x + y * y)) #use actan2 withc uses both x and y to determine quadrant too
-
-        # like this to stop gimbal lock, wich happens at 90 degrees
-        sinp = 2.0 * (w * y - z * x)
+        
+        # Roll (rotation about x-axis)
+        roll = math.atan2(2*(w*x + y*z), 1 - 2*(x*x + y*y))
+        
+        # Pitch (rotation about y-axis)
+        sinp = 2*(w*y - z*x)
         if abs(sinp) >= 1:
-            pitch = math.copysign(math.pi / 2, sinp)  # Use 90 degrees if out of range returns 90 based on sign of sinp
+            pitch = math.copysign(math.pi/2, sinp)  # Use 90° if out of range
         else:
             pitch = math.asin(sinp)
         
-        yaw = math.atan2(2.0 * (x * y + w * z), 1.0 - 2.0 * (y * y + z * z))
-
+        # Yaw (rotation about z-axis)
+        yaw = math.atan2(2*(w*z + x*y), 1 - 2*(y*y + z*z))
+        
         return (math.degrees(roll), math.degrees(pitch), math.degrees(yaw))
     
+    def get_gyro_bias(self):
+        """Return current gyroscope bias estimate in rad/s"""
+        return self.gyro_bias.copy()
