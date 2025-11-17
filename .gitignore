@@ -33,7 +33,9 @@ partition-table.bin
 # --- ESP-IDF build artifacts ---
 build/
 sdkconfig
-sdkconfig.old
+sdkconfig.*
+**/sdkconfig
+**/sdkconfig.*
 CMakeCache.txt
 cmake_install.cmake
 CMakeFiles/
