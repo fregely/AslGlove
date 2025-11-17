@@ -1,12 +1,11 @@
 #include "IRFlasher.h"
 #include "nimble_gatt.h"   // for gatt_send_notification()
-#include "driver/gpio.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
+#include "common.h"       // for gpio_dump_io_configuration()
 
 
 #define NUM_LEDS 5
-static const int leds[NUM_LEDS] = {1,2,3,6,7};
+
+static const int leds[NUM_LEDS] = {1,3,20,6,7};
 
 static volatile bool started = false;
 static volatile bool next_flag = false;
@@ -25,6 +24,9 @@ void irflasher_notify_ready(uint8_t led) {
 }
 
 void irflasher_task(void *arg) {
+    
+
+    gpio_dump_io_configuration(stdout, (1ULL << 1) | (1ULL << 3) | (1ULL << 20) | (1ULL << 6) | (1ULL << 7) | (1ULL << 4) | (1ULL << 5));
 
     uint16_t current = 0;
     for (int i = 0; i < NUM_LEDS; i++) {
