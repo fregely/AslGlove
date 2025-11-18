@@ -1,5 +1,10 @@
 # main.py
-import sys
+# pylint: disable=E1101
+# mypy: ignore-errors
+
+# ------------------------------
+# VISION PROCESSING (OpenCV)
+# ------------------------------
 import asyncio
 import argparse
 import logging
@@ -7,6 +12,8 @@ import platform
 import math
 from collections import defaultdict
 
+# for cv functionality
+from computer_vision.cv import VisionProcessor
 
 # Import base modules
 from imu_processing import (
@@ -72,9 +79,12 @@ async def main(args):
     # Position tracking for logging (always active)
     position_tracker = {
         'packet_counts': defaultdict(int),
-        'position': {},
+        'position': {},             # not used but okay
+        'start_position': {},       # first reading per IMU channel
+        'last_position': {},        # most recent IMU position
+        'last_orientation': {},     # most recent IMU roll/pitch/yaw
         'update_interval': args.update
-    }
+    }   
     
     def log_position_data(state):
         """Log position data for any IMU channel."""
@@ -140,6 +150,13 @@ async def main(args):
         await client.connect()
         await client.start_streaming()
         
+        # Start vision processor if requested
+        vision_task = None
+        if getattr(args, "vision", False):
+            vp = VisionProcessor(client.client, record=args.record)
+            client.set_external_handler(vp.handler)
+            vision_task = asyncio.create_task(vp.start())
+                
         logger.info("✅ Connected and streaming")
         logger.info(f"📍 Position logging every {args.update} packets per IMU")
         
@@ -162,11 +179,13 @@ async def main(args):
                 raw_bytes = await client.get_packet()
                 
                 # Parse
-                state = parser.parse(raw_bytes)
-                channel = state['channel']
+                imu_packet = parser.parse(raw_bytes)
+                cv_packet = vp.get_packet()
+                imu_packet["cv"] = cv_packet
+                channel = imu_packet['channel']
                 
                 # Convert
-                state = converter.convert(state)
+                imu_packet = converter.convert(imu_packet)
                 
                 # Ensure filters exist for this channel
                 if channel not in madgwick_filters:
@@ -175,24 +194,46 @@ async def main(args):
                     logger.info(f"🎯 Initialized processing for IMU channel {channel}")
                 
                 # Process through filters
-                state = madgwick_filters[channel].process(state)
-                state = dead_reckoning_filters[channel].process(state)
+                imu_packet = madgwick_filters[channel].process(imu_packet)
+                imu_packet = dead_reckoning_filters[channel].process(imu_packet)
+                
+                # ------------------------------
+                # ADD CV / BLOB DATA
+                # ------------------------------
+                if args.vision:
+                    imu_packet["led_index"] = vp.current_led
+                    imu_packet["blob_centers"] = vp.last_blob_centers
+                    imu_packet["blob_timestamp"] = vp.last_timestamp
+                
+                # ------------------------------
+                # UPDATE POSITION TRACKER
+                # ------------------------------
+                if channel not in position_tracker['start_position']:
+                    if 'position' in imu_packet:
+                        position_tracker['start_position'][channel] = imu_packet['position']
+
+                if 'position' in imu_packet:
+                    position_tracker['last_position'][channel] = imu_packet['position']
+
+                if 'orientation' in imu_packet:
+                    position_tracker['last_orientation'][channel] = imu_packet['orientation']
+                # ------------------------------
                 
                 # ALWAYS log position data (regardless of plotting)
-                log_position_data(state)
+                log_position_data(imu_packet)
                 
                 # Update graphs if plotting
                 if grapher:
                     grapher.update(
-                        unconverted=state,
-                        converted=state,
-                        madgwick=state,
-                        dead_reckoning=state
+                        unconverted=imu_packet,
+                        converted=imu_packet,
+                        madgwick=imu_packet,
+                        dead_reckoning=imu_packet
                     )
                 
                 # Record if enabled
                 if recorded_packets is not None:
-                    recorded_packets.append(state)
+                    recorded_packets.append(imu_packet)
                 
                 packet_count += 1
                 if packet_count % 500 == 0:
@@ -217,6 +258,8 @@ async def main(args):
         logger.info("="*70)
         logger.info("📊 FINAL POSITION SUMMARY")
         logger.info("="*70)
+        if vision_task:
+            vision_task.cancel()
         
         for ch in sorted(position_tracker['packet_counts'].keys()):
             count = position_tracker['packet_counts'][ch]
@@ -297,7 +340,7 @@ if __name__ == "__main__":
         '--record', '-r',
         action='store_true',
         default=None,  # Will be set based on platform AND mode
-        help='Record all packets (default on Windows for BLE)'
+        help='Record all packets (default on Windows for BLE) & Record vision blob data to CSV',
     )
     
     # Option to disable recording
@@ -306,6 +349,9 @@ if __name__ == "__main__":
         action='store_true',
         help='Disable recording'
     )
+    
+    parser.add_argument('--vision', action='store_true',
+                    help='Enable OpenCV blob detection synchronized with LED flashing')
     
     parser.add_argument('--output', '-o', type=str)
     parser.add_argument('--update', '-u', type=int, default=5)
