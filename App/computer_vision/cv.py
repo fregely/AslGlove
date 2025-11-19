@@ -10,6 +10,7 @@ import cv2
 import numpy as np
 import csv
 from datetime import datetime
+import json
 
 SERVICE_UUID = "ffeeddcc-bbaa-0011-2233-445566778899"
 LED_NOTIFY_UUID = "c4e7a180-7b2f-4c95-bfc5-1d5c62123456"
@@ -20,11 +21,12 @@ CMD_NEXT  = bytes([2])
 
 class VisionProcessor:
     """ OpenCV vision processor synchronized with ESP32 LED flasher over BLE."""
-    def __init__(self, client, record: bool = False):
+    def __init__(self, client, record: bool = False, enable_led_control: bool = True) -> None:
         self.client = client
         self.current_led = -1
         self.ready_flag = False
         self.record = record # Enable/disable CSV logging
+        self.enable_led_control = enable_led_control
         
         # processing constants
         self.THRESH = 240
@@ -35,6 +37,7 @@ class VisionProcessor:
         self.last_blob_centers = []
         self.last_timestamp = None
         self.last_packet = {}
+        self.current_led = -1
         
         # LED → IMU offset (approx 7 mm above IMU)
         # PX_PER_MM should be calibrated; 1.0 is a reasonable starting point.
@@ -47,6 +50,14 @@ class VisionProcessor:
         # CSV logging
         self.csv_file = None
         self.csv_writer = None
+        
+        try:
+            with open("finger_map.json", "r") as f:
+                self.finger_map = json.load(f)   # led_index -> finger_name
+                print("📁 Loaded finger_map.json")
+        except FileNotFoundError:
+            self.finger_map = {}
+            print("ℹ️ No calibration file found (finger_map.json)")
 
     def handler(self, _ch, data: bytearray):
         """BLE callback: ESP32 says 'ready—capture next frame'"""
@@ -61,8 +72,10 @@ class VisionProcessor:
         # Subscribe to notifications
         # await self.client.start_notify(LED_NOTIFY_UUID, self.handler)
 
-        # Tell ESP32 to begin LED loop
-        await self.client.write_gatt_char(LED_WRITE_UUID, CMD_START)
+        # Tell ESP32 to begin LED loop — ONLY if allowed
+        # During calibration, VisionProcessor must NEVER command LEDs.
+        if self.enable_led_control:
+            await self.client.write(LED_WRITE_UUID, CMD_START)
 
         # Setup camera
         cap = cv2.VideoCapture(0)
@@ -200,11 +213,16 @@ class VisionProcessor:
             self.last_blob_centers = blob_centers
             self.last_timestamp = frame_ts
                 
+            finger_id = None
+            if str(self.current_led) in self.finger_map:
+                finger_id = self.finger_map[str(self.current_led)]["finger"]
+
             self.last_packet = {
                 "cv_timestamp": frame_ts,
                 "led_index": self.current_led,
+                "finger_id": finger_id,
                 "blob_centers": blob_centers,
-                "raw_blob_centers": [info["raw_center"] for info in debug_info],
+                "raw_blob_centers": [info["raw_center"] for info in debug_info] if blob_centers else [],
                 "num_blobs": len(blob_centers),
             }
             
@@ -220,8 +238,9 @@ class VisionProcessor:
 
             cv2.imshow("ASL Vision", frame)
 
-            # Let ESP32 advance to next LED
-            await self.client.write_gatt_char(LED_WRITE_UUID, CMD_NEXT)
+            # Let ESP32 advance to next LED — ONLY if allowed
+            if self.enable_led_control:
+                await self.client.write_gatt_char(LED_WRITE_UUID, CMD_NEXT)
 
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
@@ -237,6 +256,15 @@ class VisionProcessor:
         # await self.client.stop_notify(LED_NOTIFY_UUID)
         print("📴 Vision processor stopped.")
         
-    def get_packet(self):
-        """Return the most recent CV packet."""
-        return self.last_packet
+    def get_packet(self) -> dict:
+        """
+        Return the most recent full CV packet.
+        """
+        return self.last_packet if self.last_packet else {
+            "led_index": -1,
+            "blob_centers": [],
+            "raw_blob_centers": [],
+            "num_blobs": 0,
+            "cv_timestamp": time.time(),
+            "finger_id": None,
+        }

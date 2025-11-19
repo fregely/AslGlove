@@ -28,7 +28,7 @@ class BLEClient:
         self.is_connected = False
         self.led_queue = asyncio.Queue()        # LED index (1 byte)
         
-    async def connect(self, address: Optional[str] = None, macos_use_bdaddr: bool = False):
+    async def connect(self, address: Optional[str] = None, macos_use_bdaddr: bool = False) -> None:
         """Connect to the BLE device."""
         logger.info(f"🔍 Scanning for {self.device_name}...")
         
@@ -55,7 +55,7 @@ class BLEClient:
         self.is_connected = True
         logger.info("✅ Connected!")
         
-    async def start_streaming(self):
+    async def start_streaming(self) -> None:
         """Start receiving IMU data notifications."""
         if not self.client or not self.is_connected:
             raise RuntimeError("Not connected to device")
@@ -66,13 +66,13 @@ class BLEClient:
         )
         logger.info("📡 Streaming data... (Ctrl+C to stop)")
         
-    async def stop_streaming(self):
+    async def stop_streaming(self)  -> None:
         """Stop receiving notifications."""
         if self.client and self.is_connected:
             await self.client.stop_notify(self.characteristic_uuid)
             logger.info("Stopped streaming")
     
-    async def disconnect(self):
+    async def disconnect(self) -> None:
         """Disconnect from device."""
         if self.client and self.is_connected:
             await self.client.disconnect()
@@ -83,7 +83,7 @@ class BLEClient:
         self, 
         characteristic: BleakGATTCharacteristic, 
         data: bytearray
-    ):
+    ) -> None:
         # LED packet (1 byte)
         if len(data) == 1:
             self.led_queue.put_nowait(data)
@@ -111,7 +111,7 @@ class BLEClient:
         """
         return await self.packet_queue.get()
     
-    async def run_until_disconnected(self, poll_interval: float = 0.1):
+    async def run_until_disconnected(self, poll_interval: float = 0.1) -> None:
         """Keep connection alive until stopped."""
         try:
             while self.client and self.client.is_connected:
@@ -120,5 +120,11 @@ class BLEClient:
             logger.info("🛑 User interrupted")
 
 
-    def set_external_handler(self, handler):
+    def set_external_handler(self, handler) -> None:
         self.external_handler = handler
+        
+    async def write(self, uuid: str, data: bytes) -> None:
+        """Safe wrapper for writing to the Bluetooth characteristic."""
+        if not self.client or not self.is_connected:
+            raise RuntimeError("BLE client not connected")
+        await self.client.write_gatt_char(uuid, data) 
