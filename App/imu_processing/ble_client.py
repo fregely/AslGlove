@@ -23,9 +23,10 @@ class BLEClient:
     ):
         self.device_name = device_name
         self.characteristic_uuid = characteristic_uuid
-        self.packet_queue = asyncio.Queue()  # Stores raw bytearray
+        self.packet_queue = asyncio.Queue()  # Stores raw bytearray (27 bytes)
         self.client: Optional[BleakClient] = None
         self.is_connected = False
+        self.led_queue = asyncio.Queue()        # LED index (1 byte)
         
     async def connect(self, address: Optional[str] = None, macos_use_bdaddr: bool = False):
         """Connect to the BLE device."""
@@ -83,10 +84,25 @@ class BLEClient:
         characteristic: BleakGATTCharacteristic, 
         data: bytearray
     ):
-        """Internal: called when BLE data arrives."""
-        # Just queue the raw bytes - no parsing!
-        self.packet_queue.put_nowait(data)
-        logger.debug(f"Received {len(data)} bytes")
+        # LED packet (1 byte)
+        if len(data) == 1:
+            self.led_queue.put_nowait(data)
+
+            # Forward LED packet to external handler (VisionProcessor)
+            if hasattr(self, "external_handler") and self.external_handler:
+                try:
+                    self.external_handler(characteristic, data)
+                except Exception as e:
+                    logger.error(f"External handler error: {e}")
+            return
+
+        # IMU packet (27 bytes)
+        if len(data) == 27:
+            self.packet_queue.put_nowait(data)
+            return
+
+        # Unexpected size
+        logger.warning(f"Unexpected BLE packet size: {len(data)}")
     
     async def get_packet(self) -> bytearray:
         """
@@ -103,3 +119,6 @@ class BLEClient:
         except KeyboardInterrupt:
             logger.info("🛑 User interrupted")
 
+
+    def set_external_handler(self, handler):
+        self.external_handler = handler

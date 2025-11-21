@@ -4,6 +4,7 @@
 #include "nimble_common.h"
 #include "services/gap/ble_svc_gap.h"
 #include "services/gatt/ble_svc_gatt.h"
+#include "IRFlasher.h"
 
 extern int gap_init(void);
 extern void adv_init(void);
@@ -22,6 +23,10 @@ static uint16_t time_sync_data_handle = 0;
 static uint16_t LED_state_data_handle = 0;
 static uint16_t imu_conn_handle = BLE_HS_CONN_HANDLE_NONE;
 static bool imu_notify_enabled = false;
+
+// --- LED Notification State ---
+static uint16_t led_conn_handle = BLE_HS_CONN_HANDLE_NONE;
+static bool led_notify_enabled = false;
 
 /* UUIDs */
 static const ble_uuid128_t IMU_SERVICE_UUID =
@@ -52,7 +57,7 @@ static const struct ble_gatt_svc_def gatt_svcs[] = {
             },
             {
                 .uuid = &LED_STATE_UUID.u,
-                .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE,
+                .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_NOTIFY,
                 .access_cb = led_rw_cb,
                 .val_handle = &LED_state_data_handle,
             },
@@ -112,26 +117,30 @@ static int time_rw_cb(uint16_t conn_handle, uint16_t attr_handle,
 }
 
 
+static uint8_t ir_sync_cmd = 0;
+
 static int led_rw_cb(uint16_t conn_handle, uint16_t attr_handle,
     struct ble_gatt_access_ctxt *ctxt, void *arg)
 {
-    static uint8_t led_state = 0;
     int rc;
 
     if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR) {
-        rc = ble_hs_mbuf_to_flat(ctxt->om, &led_state, sizeof(led_state), NULL);
+        rc = ble_hs_mbuf_to_flat(ctxt->om, &ir_sync_cmd, sizeof(ir_sync_cmd), NULL);
         if (rc != 0) {
             return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
         }
-        ESP_LOGI(TAG, "LED write: %d", led_state);
 
-    // TODO: gpio_set_level(GPIO_NUM_X, led_state);
-
-    } else if (ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR) {
-        rc = os_mbuf_append(ctxt->om, &led_state, sizeof(led_state));
-        if (rc != 0) {
-            return BLE_ATT_ERR_INSUFFICIENT_RES;
+        if (ir_sync_cmd == 1) {
+            ESP_LOGI(TAG, "BLE START received");
+            irflasher_start();
+        } else if (ir_sync_cmd == 2) {
+            ESP_LOGI(TAG, "BLE NEXT received");
+            irflasher_next();
         }
+    }
+
+    else if (ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR) {
+        rc = os_mbuf_append(ctxt->om, &ir_sync_cmd, sizeof(ir_sync_cmd));
     }
 
     return 0;
@@ -199,6 +208,12 @@ void gatt_subscribe_cb(struct ble_gap_event *event)
         ESP_LOGI(TAG, "IMU notify %s on conn %d",
                  imu_notify_enabled ? "enabled" : "disabled",
                  imu_conn_handle);
+    } else if (event->subscribe.attr_handle == LED_state_data_handle) {
+        led_conn_handle = event->subscribe.conn_handle;
+        led_notify_enabled = event->subscribe.cur_notify;
+        ESP_LOGI(TAG, "LED notify %s on conn %d",
+                 led_notify_enabled ? "enabled" : "disabled",
+                 led_conn_handle);
     }
 }
 
@@ -242,6 +257,7 @@ int gatt_send_notification(const uint8_t *data, size_t len) {
     // Convert data to os_mbuf, which is the format NimBLE uses for sending data, 
     struct os_mbuf *om = ble_hs_mbuf_from_flat(data, len);
     if (om == NULL) {
+        ESP_LOGE(TAG, "Failed to allocate mbuf for LED notify");
         return -1; // Failed to allocate mbuf
     }
 
@@ -249,10 +265,10 @@ int gatt_send_notification(const uint8_t *data, size_t len) {
     int rc = ble_gatts_notify_custom(imu_conn_handle, imu_data_handle, om);
     if (rc != 0) {
         ESP_LOGE(TAG, "Failed to send IMU notification: %d", rc);
-        return rc;
+        
     }
 
-    return 0; // Success
+    return rc;
 }
 
 

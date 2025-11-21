@@ -1,6 +1,7 @@
 # imu_processing/packet_parser.py
 
 import struct
+import logging
 
 class PacketParser:
     """
@@ -21,7 +22,9 @@ class PacketParser:
         """
         if len(data) != 27:
             raise ValueError(f"Expected 27 bytes, got {len(data)}")
-        
+        elif len(data) == 1:
+            logging.info("Received LED packet")
+            
         channel = data[0]
         timestamp_us = struct.unpack_from('<Q', data, 1)[0]
         
