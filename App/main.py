@@ -76,7 +76,7 @@ def parse_graph_mode(args):
 async def main(args):
     """Main data processing pipeline."""
     
-        # ---------------------------
+    # ---------------------------
     # CALIBRATION MODE EARLY EXIT
     # ---------------------------
     if args.calibrate:
