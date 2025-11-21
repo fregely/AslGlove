@@ -13,7 +13,7 @@ import math
 from collections import defaultdict
 
 # for cv functionality
-from computer_vision.cv import LED_NOTIFY_UUID, VisionProcessor
+from computer_vision.cv import VisionProcessor
 
 # Import base modules
 from imu_processing import (
@@ -73,54 +73,44 @@ def parse_graph_mode(args):
             raise ValueError(f"Invalid mode: {mode}")
     return None
 
-async def run_calibration(args):
-
-    print("🔧 Entering calibration mode...")
-
-    # BLE setup
-    client = BLEClient()
-    await client.connect()
-    await client.start_streaming()
-
-    from computer_vision.calibration import Calibrator
-
-    # LEDs to map (your ESP32 cycles these)
-    known_leds = [0, 1, 2, 6, 7]
-
-    # VisionProcessor WITHOUT LED control
-    vp = VisionProcessor(
-        client.client,     # underlying BleakClient
-        record=args.record,
-        enable_led_control=False
-    )
-
-    # Feed LED notifications into VisionProcessor
-    client.set_external_handler(vp.handler)
-
-    # Start vision task (camera + blob)
-    vision_task = asyncio.create_task(vp.start())
-
-    # Calibrator needs IMU+CV fusion, so pass BLEClient (wrapper) + VP
-    calibrator = Calibrator(vp, client, known_leds)
-
-    try:
-        await calibrator.run()   # <- BLOCKS until finished
-    finally:
-        print("🛑 Stopping calibration...")
-        vision_task.cancel()
-        await client.stop_streaming()
-        await client.disconnect()
-
-    print("✅ Calibration complete.")
-
 async def main(args):
     """Main data processing pipeline."""
-
-    # ---------------------------------------
-    # EARLY CALIBRATION PATH — EXIT COMPLETELY
-    # ---------------------------------------
+    
+        # ---------------------------
+    # CALIBRATION MODE EARLY EXIT
+    # ---------------------------
     if args.calibrate:
-        return await run_calibration(args)
+        from computer_vision.cv import VisionProcessor
+        from computer_vision.calibration import Calibrator
+
+        print("🔧 Entering calibration mode...")
+
+        # Create BLE client here
+        client = BLEClient()
+
+        # Connect to glove
+        await client.connect()
+        await client.start_streaming()
+
+        # Start CV processor (camera + blob detection)
+        vp = VisionProcessor(client.client, record=False)
+        client.set_external_handler(vp.handler)
+        vision_task = asyncio.create_task(vp.start())
+
+        # LED indices your glove cycles through
+        known_leds = [0, 1, 2, 3, 4]
+        calibrator = Calibrator(vp, known_leds)
+
+        try:
+            await calibrator.run()
+        finally:
+            print("🛑 Stopping calibration...")
+            vision_task.cancel()
+            await client.stop_streaming()
+            await client.disconnect()
+
+        print("✅ Calibration complete.")
+        return
     
     # Position tracking for logging (always active)
     position_tracker = {
@@ -153,7 +143,6 @@ async def main(args):
         )
     else:
         client = BLEClient()
-        
     
     # Setup Components
     parser = PacketParser()
@@ -397,12 +386,11 @@ if __name__ == "__main__":
         help='Disable recording'
     )
     
-    parser.add_argument("--calibrate",
-                        action="store_true",
-                        help="Run finger LED calibration")
-    
     parser.add_argument('--vision', action='store_true',
                     help='Enable OpenCV blob detection synchronized with LED flashing')
+    
+    parser.add_argument("--calibrate", action="store_true",
+                    help="Run LED → finger calibration and exit")
     
     parser.add_argument('--output', '-o', type=str)
     parser.add_argument('--update', '-u', type=int, default=5)

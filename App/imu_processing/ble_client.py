@@ -66,7 +66,7 @@ class BLEClient:
         )
         logger.info("📡 Streaming data... (Ctrl+C to stop)")
         
-    async def stop_streaming(self)  -> None:
+    async def stop_streaming(self) -> None:
         """Stop receiving notifications."""
         if self.client and self.is_connected:
             await self.client.stop_notify(self.characteristic_uuid)
@@ -120,11 +120,6 @@ class BLEClient:
             logger.info("🛑 User interrupted")
 
 
-    def set_external_handler(self, handler) -> None:
+    def set_external_handler(self, handler: callable) -> None:
+        """ Set an external BLE notification handler. """
         self.external_handler = handler
-        
-    async def write(self, uuid: str, data: bytes) -> None:
-        """Safe wrapper for writing to the Bluetooth characteristic."""
-        if not self.client or not self.is_connected:
-            raise RuntimeError("BLE client not connected")
-        await self.client.write_gatt_char(uuid, data) 

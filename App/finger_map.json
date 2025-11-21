@@ -1,0 +1,37 @@
+{
+    "0": {
+        "finger": "thumb",
+        "center": [
+            683,
+            171
+        ]
+    },
+    "1": {
+        "finger": "index",
+        "center": [
+            339,
+            96
+        ]
+    },
+    "2": {
+        "finger": "middle",
+        "center": [
+            357,
+            86
+        ]
+    },
+    "3": {
+        "finger": "ring",
+        "center": [
+            219,
+            25
+        ]
+    },
+    "4": {
+        "finger": "pinky",
+        "center": [
+            5,
+            241
+        ]
+    }
+}
