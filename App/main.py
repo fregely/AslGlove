@@ -80,7 +80,6 @@ async def main(args):
     # CALIBRATION MODE EARLY EXIT
     # ---------------------------
     if args.calibrate:
-        from computer_vision.cv import VisionProcessor
         from computer_vision.calibration import Calibrator
 
         print("🔧 Entering calibration mode...")
@@ -97,9 +96,8 @@ async def main(args):
         client.set_external_handler(vp.handler)
         vision_task = asyncio.create_task(vp.start())
 
-        # LED indices your glove cycles through
-        known_leds = [0, 1, 2, 3, 4]
-        calibrator = Calibrator(vp, known_leds)
+        # NEW: IMU-based Calibrator ONLY needs vp
+        calibrator = Calibrator(vp, known_leds=list(range(5)))
 
         try:
             await calibrator.run()

@@ -4,12 +4,15 @@
 # ------------------------------
 # VISION PROCESSING (OpenCV)
 # ------------------------------
+import json
+import math
 import time
 import asyncio
+from datetime import datetime
+import csv
 import cv2
 import numpy as np
-import csv
-from datetime import datetime
+
 
 SERVICE_UUID = "ffeeddcc-bbaa-0011-2233-445566778899"
 LED_NOTIFY_UUID = "c4e7a180-7b2f-4c95-bfc5-1d5c62123456"
@@ -47,6 +50,19 @@ class VisionProcessor:
         # CSV logging
         self.csv_file = None
         self.csv_writer = None
+        
+        # Load finger calibration map
+        try:
+            with open("finger_map.json", "r") as f:
+                self.finger_map = json.load(f)
+            print("Loaded calibration:", self.finger_map)
+        except:
+            self.finger_map = {}
+            print("No calibration file found.")
+
+        # Store last known finger positions for tracking
+        self.tracked_fingers = {}        # {"thumb": (x,y), ...}
+        self.finger_positions = {}       # output every frame
 
     def handler(self, _ch, data: bytearray):
         """BLE callback: ESP32 says 'ready—capture next frame'"""
@@ -161,6 +177,19 @@ class VisionProcessor:
                 # Optional: draw corrected center marker
                 cv2.circle(frame, (cx, cy), 4, (0, 0, 255), -1)
                 
+            # Finger assignment + tracking
+            self._assign_fingers(blob_centers)
+            
+            # Draw finger labels from tracking
+            for finger, pos in self.finger_positions.items():
+                if pos is None:
+                    continue
+
+                x, y = int(pos[0]), int(pos[1])
+                cv2.circle(frame, (x, y), 8, (255, 0, 0), -1)
+                cv2.putText(frame, finger, (x + 10, y + 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                            (255, 255, 0), 2)
                 
             # --- LOGGING + CSV  ---
             frame_ts = time.time()
@@ -240,3 +269,73 @@ class VisionProcessor:
     def get_packet(self):
         """Return the most recent CV packet."""
         return self.last_packet
+    
+    def _euclidean(self, a, b):
+        return math.sqrt((a[0] - b[0])**2 + (a[1] - b[1])**2)
+
+    def _assign_fingers(self, blob_centers):
+        """
+        Assign detected blobs to fingers using nearest-neighbor
+        against calibrated LED positions.
+        """
+
+        if not self.finger_map:
+            # No calibration → just return blobs as-is
+            return {}
+
+        # Build dict: finger -> calibrated center
+        calibration_pts = {
+            entry["finger"]: tuple(entry["center"])
+            for imu_id, entry in self.finger_map.items()
+        }
+
+        assigned = {}
+        used_blobs = set()
+
+        # ----- NEAREST-NEIGHBOR MATCHING -----
+        for finger, cal_pt in calibration_pts.items():
+            best_blob = None
+            best_dist = 999999
+
+            for i, blob in enumerate(blob_centers):
+                if i in used_blobs:
+                    continue
+
+                dist = self._euclidean(blob, cal_pt)
+                if dist < best_dist:
+                    best_dist = dist
+                    best_blob = i
+
+            if best_blob is not None:
+                assigned[finger] = blob_centers[best_blob]
+                used_blobs.add(best_blob)
+            else:
+                # No blob detected → fallback to last known tracked pos if available
+                if finger in self.tracked_fingers:
+                    assigned[finger] = self.tracked_fingers[finger]
+                else:
+                    assigned[finger] = None  # fully missing
+
+        # ----- SIMPLE SMOOTHING -----
+        smoothed = {}
+        alpha = 0.25  # smoothing factor
+        
+        for finger, pos in assigned.items():
+            if finger not in self.tracked_fingers or self.tracked_fingers[finger] is None:
+                smoothed[finger] = pos
+            else:
+                # EMA smoothing
+                px, py = self.tracked_fingers[finger]
+                if pos is None:
+                    # If missing this frame → keep last known
+                    smoothed[finger] = (px, py)
+                else:
+                    x = alpha * pos[0] + (1 - alpha) * px
+                    y = alpha * pos[1] + (1 - alpha) * py
+                    smoothed[finger] = (x, y)
+
+        # Store for next frame
+        self.tracked_fingers = smoothed
+        self.finger_positions = smoothed
+
+        return smoothed
