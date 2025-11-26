@@ -26,8 +26,6 @@ void irflasher_notify_ready(uint8_t led) {
 void irflasher_task(void *arg) {
     
 
-    gpio_dump_io_configuration(stdout, (1ULL << 1) | (1ULL << 3) | (1ULL << 20) | (1ULL << 6) | (1ULL << 7) | (1ULL << 4) | (1ULL << 5));
-
     uint16_t current = 0;
     for (int i = 0; i < NUM_LEDS; i++) {
         gpio_set_direction(leds[i], GPIO_MODE_OUTPUT);

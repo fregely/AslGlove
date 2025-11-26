@@ -7,43 +7,78 @@ class MadgwickFilter:
     
     """
     
-    def __init__(self, sample_rate=100, beta=None, zeta=None):
+    def __init__(self, sample_rate=20, beta=None, zeta=None):
         """
         Args:
             sample_rate: Sampling frequency in Hz
             beta: Algorithm gain (how much to trust accel/mag vs gyro)
             zeta: Gyroscope bias drift compensation gain
-        """
-        self.dt = 1.0 / sample_rate
+        """                
+        if beta is None:
+            gyro_rate_noise_density = 0.015  # dps/√Hz for 20hz, from datasheet
+            # Factor of √2 accounts for bandwidth = sample_rate/2 (Nyquist)
+            gyro_rms_noise_dps = gyro_rate_noise_density * math.sqrt(sample_rate / 2)
+            gyro_meas_error = math.radians(gyro_rms_noise_dps)
+
+            # Madgwick formula for beta: β = √(3/4) × gyro_error
+            beta = math.sqrt(3.0/4.0) * gyro_meas_error
+        if zeta is None:
+            # Gyro bias drift parameters from datasheet
+            initial_zro_tolerance = 5.0  # dps (from datasheet)
+            drift_time_constant = 100.0   # seconds
+            
+            gyro_drift_rate_dps = initial_zro_tolerance / drift_time_constant  # dps/s
+            gyro_meas_drift = math.radians(gyro_drift_rate_dps)
+            
+            # Madgwick formula for zeta: ζ = √(3/4) × gyro_drift
+            zeta = math.sqrt(3.0/4.0) * gyro_meas_drift
+        self.beta_base = beta
+        self.zeta_base = zeta
+        self.beta = self.beta_base
+        self.zeta = self.zeta_base
         
-        # Default values from the paper
-        gyro_meas_error = math.radians(5.0)  # 5 deg/s gyro error Look at data sheet to get these
-        gyro_meas_drift = math.radians(0.2)  # 0.2 deg/s/s drift Look at data sheet to get these, just from paper
-        
-        self.beta = beta if beta is not None else math.sqrt(3.0/4.0) * gyro_meas_error
-        self.zeta = zeta if zeta is not None else math.sqrt(3.0/4.0) * gyro_meas_drift
-        
+        self.gyro_bias = np.zeros(3)  # Gyroscope bias estimate [wx, wy, wz]
         # State variables
         self.q = np.array([1.0, 0.0, 0.0, 0.0])  # Quaternion [w, x, y, z]
-        self.gyro_bias = np.zeros(3)  # Gyroscope bias estimate [wx, wy, wz]
-        
         # Reference direction of flux in earth frame
         self.b_x = 1.0
         self.b_z = 0.0
+
+        # Timing tracking
+        self.last_timestamp_us = None
+        self.dt = 1.0 / sample_rate 
 
     def process(self, packet: dict) -> dict:
         gyro = packet['gyro']
         accel = packet['accel']
         mag = packet['mag']
+        timestamp_us = packet['timestamp_us']
 
-        self.update(gyro, accel, mag)
+        # Calculate dt from timestamps
+        dt = None
+        if self.last_timestamp_us is not None:
+            dt_us = timestamp_us - self.last_timestamp_us
+            dt = dt_us / 1e6  # Convert to seconds
+            
+            # Sanity check: should be 0.01-0.2s (5-100Hz)
+            if dt < 0.01 or dt > 0.2:
+                print(f"Warning: Unusual dt={dt:.3f}s, using previous dt={self.dt:.3f}s")
+                dt = self.dt  # Use last good dt
+            else:
+                self.dt = dt  # Update stored dt
+        else :
+            dt = self.dt  # First run, use default
+        self.last_timestamp_us = timestamp_us
+
+        self.update(gyro, accel, mag, dt)
 
         packet['quaternion'] = self.get_quaternion()
         packet['euler'] = self.get_euler_angles()
-        
+        packet['dt'] = self.dt
+    
         return packet
     
-    def update(self, gyro, accel, mag):
+    def update(self, gyro, accel, mag, dt):
         """
         Update the filter with new sensor readings.
         
@@ -56,7 +91,30 @@ class MadgwickFilter:
         gyro = np.array(gyro, dtype=float)
         accel = np.array(accel, dtype=float)
         mag = np.array(mag, dtype=float)
+            
+        # MOTION DETECTION 
+        accel_magnitude = np.linalg.norm(accel)
+        gyro_magnitude = np.linalg.norm(gyro)
         
+        # Check if experiencing linear acceleration (not just gravity)
+        accel_error = abs(accel_magnitude - 1.0)
+        
+        # Adaptive beta based on motion
+    
+        
+        if accel_error > 0.3 or gyro_magnitude > math.radians(200):
+            self.beta = self.beta_base * 0.01
+            self.zeta = self.zeta_base * 0.01
+        elif accel_error > 0.15 or gyro_magnitude > math.radians(100):
+            self.beta = self.beta_base * 0.1
+            self.zeta = self.zeta_base * 0.1
+        elif accel_error > 0.05 or gyro_magnitude > math.radians(30):
+            self.beta = self.beta_base * 0.5
+            self.zeta = self.zeta_base * 0.5
+        else:
+            self.beta = self.beta_base
+            self.zeta = self.zeta_base
+
         # Normalize accelerometer and magnetometer measurements
         accel_norm = np.linalg.norm(accel)
         if accel_norm == 0:
@@ -111,7 +169,7 @@ class MadgwickFilter:
         # Compute gradient (J^T * f) (EQ 34)
         grad_a = J_a.T @ f_a
         grad_m = J_m.T @ f_m
-        gradient = grad_a + grad_m
+        gradient = grad_a  #+ grad_m
         gradient = gradient / np.linalg.norm(gradient)
         
 
@@ -123,7 +181,7 @@ class MadgwickFilter:
         gyro_error = 2.0 * self._quaternion_multiply(q_conj, gradient)[1:]  # Extract xyz components
         
         # Integrate gyroscope bias (EQ 48)
-        self.gyro_bias += gyro_error * self.dt * self.zeta
+        self.gyro_bias += gyro_error * dt * self.zeta
         
         # Remove bias from gyroscope measurement (EQ 49)
         gyro_corrected = gyro - self.gyro_bias
@@ -141,7 +199,7 @@ class MadgwickFilter:
         q_dot = q_dot_gyro - (self.beta * gradient)
         
         # Integrate
-        self.q = self.q + q_dot * self.dt
+        self.q = self.q + q_dot * dt
         
         # Normalize quaternion
         self.q = self.q / np.linalg.norm(self.q)
