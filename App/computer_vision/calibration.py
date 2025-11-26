@@ -1,85 +1,62 @@
-# calibration.py
 import json
 import time
 import asyncio
 
-FINGER_NAMES = {
-    0: "thumb",
-    1: "index",
-    2: "middle",
-    3: "ring",
-    4: "pinky",
-}
-
 class Calibrator:
     """
-    Non-interactive LED calibration.
-
-    Uses:
-      - VisionProcessor.get_packet()
-      - LED cycle controlled entirely by cv.py
-      - BLE handled by ble_client.py
-
-    For each LED in known_leds:
-      - Wait until packet["led_index"] == LED
-      - Wait until packet has at least one blob
-      - Record (cx, cy)
+    LED→finger calibration using firmware LED override mode.
+    Python selects which LED is ON, ESP32 turns ONLY that LED on.
+    Camera takes its centroid.
     """
 
-    def __init__(self, vision: object, known_leds: list[int]) -> None:
+    def __init__(self, vision: object, ble_client: object, led_gpio_order: list[int]) -> None:
+        """ Initialize with VisionProcessor, BLEClient, and LED GPIO order. """
         self.vision = vision
-        self.known_leds = known_leds
-        self.result_map: dict[int, dict[str, any]] = {}
+        self.ble = ble_client
+        self.led_gpio_order = led_gpio_order
+        self.result_map = {}
 
-    async def _wait_for_blob(self, target_led: int, timeout: float = 5.0) -> tuple[int, int] | None:
-        """Wait for cv.py to produce a blob for a specific LED."""
+    async def _wait_for_blob(self, timeout: float = 4.0) -> tuple | None:
         start = time.time()
-
         while time.time() - start < timeout:
-            packet = self.vision.get_packet()
-
-            if not packet:
-                await asyncio.sleep(0.01)
-                continue
-
-            led = packet.get("led_index", -1)
-            blobs = packet.get("blob_centers", [])
-            num = packet.get("num_blobs", 0)
-
-            # Only proceed if cv.py is currently flashing the LED we need
-            if led == target_led and num > 0:
-                return blobs[0]   # First blob center
-
-            await asyncio.sleep(0.01)
-
+            pkt = self.vision.get_packet()
+            blobs = pkt.get("blob_centers", [])
+            if len(blobs) == 1:
+                return blobs[0]
+            await asyncio.sleep(0.02)
         return None
 
     async def run(self) -> None:
-        print("\n🔧 === ASL Glove Calibration ===\n")
-        print("Hold your hand steady while each LED flashes.\n")
+        print("\n🔧 === LED Calibration Mode ===\n")
 
-        for led in self.known_leds:
-            print(f"👉 Waiting for LED {led}...")
+        finger_names = ["thumb", "index", "middle", "ring", "pinky"]
 
-            blob = await self._wait_for_blob(led)
+        for idx, gpio in enumerate(self.led_gpio_order):
+            finger = finger_names[idx]
+
+            print(f"👉 Lighting LED for {finger} (GPIO={gpio})...")
+
+            # Tell firmware to activate this LED only
+            await self.ble.select_led(gpio)
+
+            blob = await self._wait_for_blob()
 
             if blob is None:
-                print(f"⚠️ No blob detected for LED {led} (skipping)\n")
+                print(f"⚠️ No blob detected for {finger}")
                 continue
 
             cx, cy = blob
-            finger = FINGER_NAMES.get(led, "unknown")
+            print(f"   ✔ {finger} centroid = ({cx},{cy})")
 
-            print(f"   ✔ LED {led} detected → center = ({cx}, {cy})")
-
-            self.result_map[led] = {
+            self.result_map[str(gpio)] = {
                 "finger": finger,
-                "center": [cx, cy],
+                "center": [cx, cy]
             }
 
-        # Save results
+        # Turn all LEDs OFF
+        await self.ble.select_led(255)
+
         with open("finger_map.json", "w") as f:
             json.dump(self.result_map, f, indent=4)
 
-        print("\n💾 Saved LED→finger map to finger_map.json")
-        print("🎉 Calibration finished!\n")
+        print("\n💾 Saved to finger_map.json")

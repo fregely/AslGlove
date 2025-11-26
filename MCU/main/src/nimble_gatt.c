@@ -8,6 +8,7 @@
 
 extern int gap_init(void);
 extern void adv_init(void);
+extern void irflasher_select_led(int gpio);
 
 /* Forward declarations for callbacks */
 static int cmd_write_cb(uint16_t conn_handle, uint16_t attr_handle,
@@ -120,27 +121,68 @@ static int time_rw_cb(uint16_t conn_handle, uint16_t attr_handle,
 static uint8_t ir_sync_cmd = 0;
 
 static int led_rw_cb(uint16_t conn_handle, uint16_t attr_handle,
-    struct ble_gatt_access_ctxt *ctxt, void *arg)
+                     struct ble_gatt_access_ctxt *ctxt, void *arg)
 {
     int rc;
 
     if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR) {
-        rc = ble_hs_mbuf_to_flat(ctxt->om, &ir_sync_cmd, sizeof(ir_sync_cmd), NULL);
+
+        // Read ALL bytes from write buffer
+        uint8_t buf[4] = {0};
+        int len = OS_MBUF_PKTLEN(ctxt->om);
+        if (len > sizeof(buf)) len = sizeof(buf);
+
+        rc = ble_hs_mbuf_to_flat(ctxt->om, buf, len, NULL);
         if (rc != 0) {
             return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
         }
 
-        if (ir_sync_cmd == 1) {
-            ESP_LOGI(TAG, "BLE START received");
+        uint8_t cmd = buf[0];
+
+        // ==============================
+        // COMMAND 1 → START CYCLING
+        // ==============================
+        if (cmd == 1) {
+            ESP_LOGI(TAG, "BLE CMD_START received");
             irflasher_start();
-        } else if (ir_sync_cmd == 2) {
-            ESP_LOGI(TAG, "BLE NEXT received");
+        }
+
+        // ==============================
+        // COMMAND 2 → NEXT LED in cycle
+        // ==============================
+        else if (cmd == 2) {
+            ESP_LOGI(TAG, "BLE CMD_NEXT received");
             irflasher_next();
         }
+
+        // ==============================
+        // COMMAND 3 → SELECT EXACT LED
+        // buf = [3, GPIO]
+        // ==============================
+        else if (cmd == 3) {
+            if (len >= 2) {
+                uint8_t gpio = buf[1];
+                ESP_LOGI(TAG, "BLE CMD_LED_SELECT (gpio=%d)", gpio);
+                irflasher_select_led((int)gpio);
+            } else {
+                ESP_LOGW(TAG, "CMD_LED_SELECT missing GPIO byte");
+            }
+        }
+
+        // ==============================
+        // UNKNOWN COMMAND
+        // ==============================
+        else {
+            ESP_LOGW(TAG, "Unknown LED command: %u", cmd);
+        }
+
+        return 0;
     }
 
+    // READ: return last command byte
     else if (ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR) {
         rc = os_mbuf_append(ctxt->om, &ir_sync_cmd, sizeof(ir_sync_cmd));
+        return rc;
     }
 
     return 0;

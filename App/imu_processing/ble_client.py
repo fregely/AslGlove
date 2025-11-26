@@ -9,7 +9,7 @@ from imu_processing.packet_parser import PacketParser
 
 logger = logging.getLogger(__name__)
 
-
+CMD_LED_SELECT = bytes([3])
 class BLEClient:
     """
     Handles BLE connection and receives raw packet bytes.
@@ -123,3 +123,14 @@ class BLEClient:
     def set_external_handler(self, handler: callable) -> None:
         """ Set an external BLE notification handler. """
         self.external_handler = handler
+        
+        
+    async def select_led(self, gpio: int) -> None:
+        """Tell ESP32 to turn on exactly GPIO <gpio>."""
+        if not self.client:
+            raise RuntimeError("BLE client not connected")
+
+        await self.client.write_gatt_char(
+            self.characteristic_uuid,
+            CMD_LED_SELECT + bytes([gpio])
+        )

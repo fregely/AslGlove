@@ -84,23 +84,23 @@ async def main(args):
 
         print("🔧 Entering calibration mode...")
 
-        # Create BLE client here
         client = BLEClient()
-
-        # Connect to glove
         await client.connect()
         await client.start_streaming()
 
-        # Start CV processor (camera + blob detection)
-        vp = VisionProcessor(client.client, record=False)
+        vp = VisionProcessor(client.client, record=False, calibration_mode=True)
         client.set_external_handler(vp.handler)
         vision_task = asyncio.create_task(vp.start())
 
-        # NEW: IMU-based Calibrator ONLY needs vp
-        calibrator = Calibrator(vp, known_leds=list(range(5)))
+        # GPIOs for each finger in correct order
+        led_gpio_order = [1, 3, 20, 6, 7]
+
+        calibrator = Calibrator(vp, client, led_gpio_order)
 
         try:
             await calibrator.run()
+            # When calibration ends, turn all LEDs OFF
+            await client.select_led(255)
         finally:
             print("🛑 Stopping calibration...")
             vision_task.cancel()

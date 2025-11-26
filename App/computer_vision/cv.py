@@ -23,11 +23,12 @@ CMD_NEXT  = bytes([2])
 
 class VisionProcessor:
     """ OpenCV vision processor synchronized with ESP32 LED flasher over BLE."""
-    def __init__(self, client, record: bool = False):
+    def __init__(self, client, record: bool = False, calibration_mode=False):
         self.client = client
         self.current_led = -1
         self.ready_flag = False
         self.record = record # Enable/disable CSV logging
+        self.calibration_mode = calibration_mode
         
         # processing constants
         self.THRESH = 240
@@ -78,7 +79,11 @@ class VisionProcessor:
         # await self.client.start_notify(LED_NOTIFY_UUID, self.handler)
 
         # Tell ESP32 to begin LED loop
-        await self.client.write_gatt_char(LED_WRITE_UUID, CMD_START)
+        # Tell ESP32 to begin LED loop (normal mode only)
+        if not self.calibration_mode:
+            await self.client.write_gatt_char(LED_WRITE_UUID, CMD_START)
+        else:
+            print("📸 Calibration mode: skipping CMD_START (Python drives LEDs with CMD_LED_SELECT)")
 
         # Setup camera
         cap = cv2.VideoCapture(0)
@@ -250,7 +255,9 @@ class VisionProcessor:
             cv2.imshow("ASL Vision", frame)
 
             # Let ESP32 advance to next LED
-            await self.client.write_gatt_char(LED_WRITE_UUID, CMD_NEXT)
+            # In normal mode, tell ESP32 to advance LED in its cycle
+            if not self.calibration_mode:
+                await self.client.write_gatt_char(LED_WRITE_UUID, CMD_NEXT)
 
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
