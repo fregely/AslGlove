@@ -84,6 +84,7 @@ class VisionProcessor:
             await self.client.write_gatt_char(LED_WRITE_UUID, CMD_START)
         else:
             print("📸 Calibration mode: skipping CMD_START (Python drives LEDs with CMD_LED_SELECT)")
+            
 
         # Setup camera
         cap = cv2.VideoCapture(0)

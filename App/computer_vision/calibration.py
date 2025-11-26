@@ -15,6 +15,7 @@ class Calibrator:
         self.ble = ble_client
         self.led_gpio_order = led_gpio_order
         self.result_map = {}
+        self.vision_task = None
 
     async def _wait_for_blob(self, timeout: float = 4.0) -> tuple | None:
         start = time.time()
@@ -33,6 +34,9 @@ class Calibrator:
 
         for idx, gpio in enumerate(self.led_gpio_order):
             finger = finger_names[idx]
+
+            self.vision_task = asyncio.create_task(self.vision.start())
+            await asyncio.sleep(1.0)
 
             print(f"👉 Lighting LED for {finger} (GPIO={gpio})...")
 
@@ -55,6 +59,14 @@ class Calibrator:
 
         # Turn all LEDs OFF
         await self.ble.select_led(255)
+        # Stop vision task
+        if self.vision_task:
+            self.vision_task.cancel()
+            try:
+                await self.vision_task
+            except asyncio.CancelledError:
+                pass
+
 
         with open("finger_map.json", "w") as f:
             json.dump(self.result_map, f, indent=4)

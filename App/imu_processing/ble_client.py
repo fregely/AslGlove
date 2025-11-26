@@ -10,6 +10,7 @@ from imu_processing.packet_parser import PacketParser
 logger = logging.getLogger(__name__)
 
 CMD_LED_SELECT = bytes([3])
+
 class BLEClient:
     """
     Handles BLE connection and receives raw packet bytes.
@@ -19,10 +20,12 @@ class BLEClient:
     def __init__(
         self, 
         device_name: str = "ASL_Glove", 
-        characteristic_uuid: str = "c4e7a180-7b2f-4c95-bfc5-1d5c62123456"
+        characteristic_uuid: str = "c4e7a180-7b2f-4c95-bfc5-1d5c62123456",
+        led_characteristic_uuid: str = "01234567-89ab-cdef-0123-456789abcdef"  # ADD THIS
     ):
         self.device_name = device_name
-        self.characteristic_uuid = characteristic_uuid
+        self.characteristic_uuid = characteristic_uuid  # IMU data
+        self.led_characteristic_uuid = led_characteristic_uuid  # LED control
         self.packet_queue = asyncio.Queue()  # Stores raw bytearray (27 bytes)
         self.client: Optional[BleakClient] = None
         self.is_connected = False
@@ -60,16 +63,25 @@ class BLEClient:
         if not self.client or not self.is_connected:
             raise RuntimeError("Not connected to device")
         
+        # Subscribe to IMU data
         await self.client.start_notify(
             self.characteristic_uuid,
             self._notification_handler
         )
+        
+        # Subscribe to LED notifications (for calibration sync)
+        await self.client.start_notify(
+            self.led_characteristic_uuid,
+            self._notification_handler
+        )
+        
         logger.info("📡 Streaming data... (Ctrl+C to stop)")
         
     async def stop_streaming(self) -> None:
         """Stop receiving notifications."""
         if self.client and self.is_connected:
             await self.client.stop_notify(self.characteristic_uuid)
+            await self.client.stop_notify(self.led_characteristic_uuid)
             logger.info("Stopped streaming")
     
     async def disconnect(self) -> None:
@@ -130,7 +142,9 @@ class BLEClient:
         if not self.client:
             raise RuntimeError("BLE client not connected")
 
+        # Write to LED characteristic, not IMU characteristic!
         await self.client.write_gatt_char(
-            self.characteristic_uuid,
+            self.led_characteristic_uuid,  # FIXED - use LED characteristic
             CMD_LED_SELECT + bytes([gpio])
         )
+        logger.debug(f"Sent CMD_LED_SELECT: GPIO={gpio}")

@@ -5,13 +5,55 @@
 # ------------------------------
 # VISION PROCESSING (OpenCV)
 # ------------------------------
+
+
+# Force X11 backend for OpenCV on Linux (must be before cv2 import)
+import os
+import platform
 import asyncio
 import argparse
+
+# Parse args FIRST (before any imports that use Qt)
+parser = argparse.ArgumentParser(
+    description="ASL Glove IMU Data Pipeline",
+    formatter_class=argparse.RawDescriptionHelpFormatter
+)
+
+# Add all your arguments here
+parser.add_argument('--mode', '-m', type=str, default='position',
+                   choices=['all', 'debug', 'sensor', 'madgwick', 'position', 'graph'])
+parser.add_argument('graph_options', nargs='*')
+parser.add_argument('--no-plot', action='store_true', default=None)
+parser.add_argument('--force-plot', action='store_true')
+parser.add_argument('--record', '-r', action='store_true', default=None)
+parser.add_argument('--no-record', action='store_true')
+parser.add_argument('--vision', action='store_true')
+parser.add_argument('--calibrate', action='store_true')
+parser.add_argument('--output', '-o', type=str)
+parser.add_argument('--update', '-u', type=int, default=5)
+parser.add_argument('--max-points', type=int, default=200)
+parser.add_argument('--playback', '-p', type=str)
+parser.add_argument('--speed', '-s', type=float, default=1.0)
+parser.add_argument('--fast', '-f', action='store_true')
+parser.add_argument('--debug', '-d', action='store_true')
+parser.add_argument('--quiet', '-q', action='store_true')
+
+args = parser.parse_args()
+
+# NOW set environment variables BEFORE imports
+if platform.system() == 'Linux' and args.calibrate:
+    os.environ['QT_QPA_PLATFORM'] = 'xcb'
+    os.environ['QT_LOGGING_RULES'] = '*.debug=false;qt.qpa.*=false'
+
+
 import logging
 import platform
 import math
 from collections import defaultdict
 
+# if (platform.system() == 'Linux' and args.calibrate):
+#     os.environ['QT_QPA_PLATFORM'] = 'xcb'
+#     os.environ['QT_LOGGING_RULES'] = '*.debug=false;qt.qpa.*=false'
 # for cv functionality
 from computer_vision.cv import VisionProcessor
 
@@ -90,7 +132,7 @@ async def main(args):
 
         vp = VisionProcessor(client.client, record=False, calibration_mode=True)
         client.set_external_handler(vp.handler)
-        vision_task = asyncio.create_task(vp.start())
+        # vision_task = asyncio.create_task(vp.start())
 
         # GPIOs for each finger in correct order
         led_gpio_order = [1, 3, 20, 6, 7]
@@ -103,7 +145,7 @@ async def main(args):
             await client.select_led(255)
         finally:
             print("🛑 Stopping calibration...")
-            vision_task.cancel()
+            # vision_task.cancel()
             await client.stop_streaming()
             await client.disconnect()
 
@@ -344,84 +386,20 @@ if __name__ == "__main__":
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
     
-    # Mode Selection
-    parser.add_argument(
-        '--mode', '-m',
-        type=str,
-        default='position',
-        choices=['all', 'debug', 'sensor', 'madgwick', 'position', 'graph']
-    )
-    
-    parser.add_argument('graph_options', nargs='*')
-    
-    # No-plot option (default True on Windows ONLY for BLE mode)
-    parser.add_argument(
-        '--no-plot',
-        action='store_true',
-        default=None,  # Will be set based on platform AND mode
-        help='Disable plotting (default on Windows for BLE only)'
-    )
-    
-    # Force plot on Windows
-    parser.add_argument(
-        '--force-plot',
-        action='store_true',
-        help='Force plotting even on Windows with BLE'
-    )
-    
-    # Recording - default on Windows for BLE
-    parser.add_argument(
-        '--record', '-r',
-        action='store_true',
-        default=None,  # Will be set based on platform AND mode
-        help='Record all packets (default on Windows for BLE) & Record vision blob data to CSV',
-    )
-    
-    # Option to disable recording
-    parser.add_argument(
-        '--no-record',
-        action='store_true',
-        help='Disable recording'
-    )
-    
-    parser.add_argument('--vision', action='store_true',
-                    help='Enable OpenCV blob detection synchronized with LED flashing')
-    
-    parser.add_argument("--calibrate", action="store_true",
-                    help="Run LED → finger calibration and exit")
-    
-    parser.add_argument('--output', '-o', type=str)
-    parser.add_argument('--update', '-u', type=int, default=5)
-    parser.add_argument('--max-points', type=int, default=200)
-    parser.add_argument('--playback', '-p', type=str)
-    parser.add_argument('--speed', '-s', type=float, default=1.0)
-    parser.add_argument('--fast', '-f', action='store_true')
-    parser.add_argument('--debug', '-d', action='store_true')
-    parser.add_argument('--quiet', '-q', action='store_true')
-    
-    args = parser.parse_args()
-    
-    # Smart defaults based on mode and platform
-    if args.playback:
-        # PLAYBACK MODE: Always enable plotting, never record
+   
+    # BLE MODE: Platform-specific defaults
+    if platform.system() == 'Windows':
         if args.no_plot is None:
-            args.no_plot = False  # Always plot in playback mode
+            args.no_plot = True  # No plot on Windows BLE
         if args.record is None:
-            args.record = False  # Don't record playback by default
+            args.record = True  # Auto-record on Windows BLE
     else:
-        # BLE MODE: Platform-specific defaults
-        if platform.system() == 'Windows':
-            if args.no_plot is None:
-                args.no_plot = True  # No plot on Windows BLE
-            if args.record is None:
-                args.record = True  # Auto-record on Windows BLE
-        else:
-            # Linux/Mac BLE
-            if args.no_plot is None:
-                args.no_plot = False  # Plot on Linux/Mac
-            if args.record is None:
-                args.record = False  # Don't auto-record on Linux/Mac
-    
+        # Linux/Mac BLE
+        if args.no_plot is None:
+            args.no_plot = False  # Plot on Linux/Mac
+        if args.record is None:
+            args.record = False  # Don't auto-record on Linux/Mac
+
     # Handle override flags
     if args.force_plot:
         args.no_plot = False
