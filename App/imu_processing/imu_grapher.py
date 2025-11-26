@@ -9,6 +9,8 @@ import matplotlib
 
 if platform.system() == 'Windows':
     matplotlib.use('qt5agg')
+else:
+    matplotlib.use('TkAgg')
 
 import matplotlib.pyplot as plt
 from collections import deque, defaultdict

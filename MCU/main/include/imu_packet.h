@@ -7,7 +7,7 @@
  #include "freertos/FreeRTOS.h"
  #include "freertos/queue.h" 
  
- #define IMU_QUEUE_SIZE 50  // Adjust based on your needs
+ #define IMU_QUEUE_SIZE 100  // Adjust based on your needs
 
  extern QueueHandle_t imu_data_queue;
 

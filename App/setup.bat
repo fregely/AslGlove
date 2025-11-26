@@ -17,6 +17,7 @@ echo Creating new virtual environment...
 python -m venv venv
 
 REM Activate it
+cmd
 call venv\Scripts\activate.bat
 
 REM Install packages

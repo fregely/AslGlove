@@ -21,6 +21,7 @@ python main.py --playback recording_[timestamp] # Will playback and graph it
 ```
 
 ## Linux / Mac TBD 
+source venv/bin/activate
 
 ## Commands
 

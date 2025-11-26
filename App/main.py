@@ -354,7 +354,7 @@ if __name__ == "__main__":
                     help='Enable OpenCV blob detection synchronized with LED flashing')
     
     parser.add_argument('--output', '-o', type=str)
-    parser.add_argument('--update', '-u', type=int, default=5)
+    parser.add_argument('--update', '-u', type=int, default=20)
     parser.add_argument('--max-points', type=int, default=200)
     parser.add_argument('--playback', '-p', type=str)
     parser.add_argument('--speed', '-s', type=float, default=1.0)

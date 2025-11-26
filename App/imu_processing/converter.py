@@ -110,7 +110,7 @@ class IMUConverter:
         gy_rad = np.radians(gy_deg)
         gz_rad = np.radians(gz_deg)
         
-        return (gx_deg, gy_deg, gz_deg)
+        return (gx_rad, gy_rad, gz_rad)
     
     def convert_magnetometer(self, raw_x, raw_y, raw_z):
         """
