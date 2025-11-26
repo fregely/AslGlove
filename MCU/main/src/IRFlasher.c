@@ -3,7 +3,7 @@
 #include "common.h"
 
 #define NUM_LEDS 5
-static const int leds[NUM_LEDS] = {1,3,20,6,7};
+static const int leds[NUM_LEDS] = {1,3,20,7,6};
 
 static volatile bool started = false;
 static volatile bool next_flag = false;

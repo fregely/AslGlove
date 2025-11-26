@@ -283,67 +283,50 @@ class VisionProcessor:
 
     def _assign_fingers(self, blob_centers):
         """
-        Assign detected blobs to fingers using nearest-neighbor
-        against calibrated LED positions.
+        Assign blobs based on LED index (not geometry).
+        Only one LED is on per frame, so this is 100% reliable.
         """
 
-        if not self.finger_map:
-            # No calibration → just return blobs as-is
-            return {}
+        # If no LED flash data → skip
+        if self.current_led is None or self.current_led < 0:
+            return self.finger_positions
 
-        # Build dict: finger -> calibrated center
-        calibration_pts = {
-            entry["finger"]: tuple(entry["center"])
-            for imu_id, entry in self.finger_map.items()
-        }
+        # If no blob detected this frame → return previous
+        if not blob_centers:
+            return self.finger_positions
 
-        assigned = {}
-        used_blobs = set()
+        # We expect exactly 1 blob because only one LED is on
+        cx, cy = blob_centers[0]
 
-        # ----- NEAREST-NEIGHBOR MATCHING -----
-        for finger, cal_pt in calibration_pts.items():
-            best_blob = None
-            best_dist = 999999
+        # Build LED index → finger map (only once)
+        if not hasattr(self, "led_index_to_finger"):
+            led_order = [1, 3, 20, 7, 6]  # GPIO cycle order (corrected)
+            finger_order = ["thumb", "index", "middle", "ring", "pinky"]
+            self.led_index_to_finger = {
+                i: finger_order[i]
+                for i in range(len(finger_order))
+            }
 
-            for i, blob in enumerate(blob_centers):
-                if i in used_blobs:
-                    continue
+        # Get finger for this LED frame
+        finger = self.led_index_to_finger.get(self.current_led)
 
-                dist = self._euclidean(blob, cal_pt)
-                if dist < best_dist:
-                    best_dist = dist
-                    best_blob = i
+        if finger is None:
+            return self.finger_positions
 
-            if best_blob is not None:
-                assigned[finger] = blob_centers[best_blob]
-                used_blobs.add(best_blob)
-            else:
-                # No blob detected → fallback to last known tracked pos if available
-                if finger in self.tracked_fingers:
-                    assigned[finger] = self.tracked_fingers[finger]
-                else:
-                    assigned[finger] = None  # fully missing
+        # Smooth motion
+        alpha = 0.30
+        prev = self.tracked_fingers.get(finger)
 
-        # ----- SIMPLE SMOOTHING -----
-        smoothed = {}
-        alpha = 0.25  # smoothing factor
-        
-        for finger, pos in assigned.items():
-            if finger not in self.tracked_fingers or self.tracked_fingers[finger] is None:
-                smoothed[finger] = pos
-            else:
-                # EMA smoothing
-                px, py = self.tracked_fingers[finger]
-                if pos is None:
-                    # If missing this frame → keep last known
-                    smoothed[finger] = (px, py)
-                else:
-                    x = alpha * pos[0] + (1 - alpha) * px
-                    y = alpha * pos[1] + (1 - alpha) * py
-                    smoothed[finger] = (x, y)
+        if prev is None:
+            smoothed = (cx, cy)
+        else:
+            px, py = prev
+            sx = alpha * cx + (1 - alpha) * px
+            sy = alpha * cy + (1 - alpha) * py
+            smoothed = (sx, sy)
 
-        # Store for next frame
-        self.tracked_fingers = smoothed
-        self.finger_positions = smoothed
+        # Update finger position
+        self.tracked_fingers[finger] = smoothed
+        self.finger_positions[finger] = smoothed
 
-        return smoothed
+        return self.finger_positions
