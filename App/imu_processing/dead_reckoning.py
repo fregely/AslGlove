@@ -1,6 +1,9 @@
 import numpy as np
 import math
 from collections import deque
+  
+# from paper 
+# https://ieeexplore.ieee.org/document/7133658/metrics#metrics
 
 class KalmanDeadReckoning:
     def __init__(self, sample_rate=20, p=0.1, q=0.01, r=0.1, gravity_convention='NED'):
