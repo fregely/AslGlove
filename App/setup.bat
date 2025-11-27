@@ -17,7 +17,7 @@ echo Creating new virtual environment...
 python -m venv venv
 
 REM Activate it
-call venv\Scripts\activate.bat
+call venv\Scripts\activate.ps1
 
 REM Install packages
 python -m pip install --upgrade pip

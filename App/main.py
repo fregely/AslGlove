@@ -5,6 +5,8 @@ import argparse
 import logging
 import platform
 import math
+import numpy as np
+import time
 from collections import defaultdict
 
 
@@ -16,7 +18,8 @@ from imu_processing import (
     BLEClient,
     PacketParser,
     Recording,
-    PlaybackClient
+    PlaybackClient,
+    IMUCalibration
 )
 
 logger = logging.getLogger(__name__)
@@ -153,6 +156,29 @@ async def main(args):
         logger.error(f"❌ Failed to connect: {e}")
         return
     
+
+    imu_cal = IMUCalibration()
+    print("🟡 Hold your hand still... calibrating IMUs...")
+
+    start_time = time.time()
+
+    while time.time() - start_time < 2.0:  # 2 seconds of data
+        raw_bytes = await client.get_packet()
+        state = parser.parse(raw_bytes)
+        state = converter.convert(state)
+
+        accel = np.array(state["accel"])
+        gyro  = np.array(state["gyro"])
+
+        imu_cal.add_sample(accel, gyro)
+
+        imu_cal.compute()
+
+    print("✅ Calibration complete!")
+    print("Gyro bias:", imu_cal.gyro_bias)
+    print("Accel bias:", imu_cal.accel_bias)
+
+    
     # Main Processing Loop
     try:
         packet_count = 0
@@ -174,6 +200,11 @@ async def main(args):
                     dead_reckoning_filters[channel] = DeadReckoning(sample_rate=20)
                     logger.info(f"🎯 Initialized processing for IMU channel {channel}")
                 
+                # APPLY CALIBRATION HERE
+                accel_corr, gyro_corr = imu_cal.apply(state["accel"], state["gyro"])
+                state["accel"] = accel_corr
+                state["gyro"]  = gyro_corr
+
                 # Process through filters
                 state = madgwick_filters[channel].process(state)
                 state = dead_reckoning_filters[channel].process(state)
