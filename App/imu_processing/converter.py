@@ -46,11 +46,11 @@ class IMUConverter:
         mag_raw = packet['mag_raw']
 
         accel_g = self.convert_accelerometer(*accel_raw)
-        gyro_deg = self.convert_gyroscope(*gyro_raw)
+        gyro_rad = self.convert_gyroscope(*gyro_raw)
         mag_ut = self.convert_magnetometer(*mag_raw)
 
         packet['accel'] = accel_g
-        packet['gyro'] = gyro_deg
+        packet['gyro'] = gyro_rad
         packet['mag'] = mag_ut
 
         return packet
