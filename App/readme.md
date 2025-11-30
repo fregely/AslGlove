@@ -9,6 +9,7 @@ Real-time IMU data processing and visualization for ASL gesture recognition.
 ```bash
 # Go to main directory, and run setup.bat in admin mode
 cd App
+set-executionpolicy remotesigned
 venv\Scripts\activate.bat
 ```
 #### Running the program

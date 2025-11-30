@@ -1,9 +1,8 @@
 # imu_grapher.py
 """
-IMU grapher - Detailed pipeline-compatible IMU grapher
+IMU grapher - Detailed pipeline-compatible IMU grapher with corrected positions
 """
 import sys
-
 import platform
 import matplotlib
 
@@ -23,13 +22,15 @@ class GraphMode(Flag):
     UNCONVERTED = auto()  # 3 graphs: Accel, Gyro, Mag (raw)
     CONVERTED = auto()    # 3 graphs: Accel, Gyro, Mag (physical units)
     MADGWICK = auto()     # 3 graphs: Roll, Pitch, Yaw
-    DEAD_RECKONING = auto()  # 3 graphs: Position X, Y, Z
+    DEAD_RECKONING = auto()  # 3 graphs: Position X, Y, Z (raw IMU)
+    CORRECTED = auto()    # 3 graphs: Corrected Position X, Y, Z (with PID)
     
     # Convenience combinations
-    ALL = UNCONVERTED | CONVERTED | MADGWICK | DEAD_RECKONING
-    FULL_PIPELINE = CONVERTED | MADGWICK | DEAD_RECKONING
+    ALL = UNCONVERTED | CONVERTED | MADGWICK | DEAD_RECKONING | CORRECTED
+    FULL_PIPELINE = CONVERTED | MADGWICK | DEAD_RECKONING | CORRECTED
     SENSORS_ONLY = UNCONVERTED | CONVERTED
     ORIENTATION_POSITION = MADGWICK | DEAD_RECKONING
+    POSITION_COMPARISON = DEAD_RECKONING | CORRECTED  # Compare raw vs corrected
 
 
 class IMUGrapher:
@@ -40,16 +41,17 @@ class IMUGrapher:
     - UNCONVERTED: 3 graphs (Accel raw, Gyro raw, Mag raw)
     - CONVERTED: 3 graphs (Accel g, Gyro deg/s, Mag uT)
     - MADGWICK: 3 graphs (Roll, Pitch, Yaw)
-    - DEAD_RECKONING: 3 graphs (Position X, Y, Z)
+    - DEAD_RECKONING: 3 graphs (Position X, Y, Z - raw IMU drift)
+    - CORRECTED: 3 graphs (Position X, Y, Z - PID corrected)
     
     Each graph shows all active IMU channels with different colors.
     """
     
     def __init__(
         self,
-        mode: GraphMode = GraphMode.CONVERTED | GraphMode.MADGWICK,
+        mode: GraphMode = GraphMode.CORRECTED,  # Default to showing corrected position
         max_points: int = 200,
-        update_interval: int = 5
+        update_interval: int = 20
     ):
         """
         Initialize grapher.
@@ -96,6 +98,12 @@ class IMUGrapher:
             'z': deque(maxlen=max_points),
         })
         
+        self.corrected_data = defaultdict(lambda: {
+            'x': deque(maxlen=max_points),
+            'y': deque(maxlen=max_points),
+            'z': deque(maxlen=max_points),
+        })
+        
         # Setup plots
         self._setup_plots()
     
@@ -112,6 +120,8 @@ class IMUGrapher:
         if self.mode & GraphMode.MADGWICK:
             num_graphs += 3
         if self.mode & GraphMode.DEAD_RECKONING:
+            num_graphs += 3
+        if self.mode & GraphMode.CORRECTED:
             num_graphs += 3
         
         if num_graphs == 0:
@@ -186,15 +196,29 @@ class IMUGrapher:
         # DEAD_RECKONING mode: 3 graphs
         if self.mode & GraphMode.DEAD_RECKONING:
             self.axes['pos_x'] = axes[ax_idx]
-            self._setup_position_axis(axes[ax_idx], 'Position X', color='#e74c3c')
+            self._setup_position_axis(axes[ax_idx], 'Position X (Raw IMU)', color='#e74c3c')
             ax_idx += 1
             
             self.axes['pos_y'] = axes[ax_idx]
-            self._setup_position_axis(axes[ax_idx], 'Position Y', color='#3498db')
+            self._setup_position_axis(axes[ax_idx], 'Position Y (Raw IMU)', color='#3498db')
             ax_idx += 1
             
             self.axes['pos_z'] = axes[ax_idx]
-            self._setup_position_axis(axes[ax_idx], 'Position Z', color='#2ecc71')
+            self._setup_position_axis(axes[ax_idx], 'Position Z (Raw IMU)', color='#2ecc71')
+            ax_idx += 1
+        
+        # CORRECTED mode: 3 graphs
+        if self.mode & GraphMode.CORRECTED:
+            self.axes['corr_x'] = axes[ax_idx]
+            self._setup_position_axis(axes[ax_idx], 'Position X (Corrected)', color='#9b59b6')
+            ax_idx += 1
+            
+            self.axes['corr_y'] = axes[ax_idx]
+            self._setup_position_axis(axes[ax_idx], 'Position Y (Corrected)', color='#e67e22')
+            ax_idx += 1
+            
+            self.axes['corr_z'] = axes[ax_idx]
+            self._setup_position_axis(axes[ax_idx], 'Position Z (Corrected)', color='#16a085')
             ax_idx += 1
         
         # Hide unused subplots
@@ -202,10 +226,8 @@ class IMUGrapher:
             axes[i].set_visible(False)
         
         plt.tight_layout()
-
-        plt.tight_layout()
-        plt.show(block=False)  # Non-blocking show
-        plt.pause(0.001)  # Small pause to let GUI initialize
+        plt.show(block=False)
+        plt.pause(0.001)
     
     def _setup_sensor_axis(self, ax, title, ylabel, color='black'):
         """Setup axis for sensor data (accel/gyro/mag)."""
@@ -213,7 +235,6 @@ class IMUGrapher:
         ax.set_ylabel(ylabel, fontsize=9)
         ax.grid(True, alpha=0.3)
         ax.axhline(y=0, color='black', linestyle='--', alpha=0.3)
-        # Legend will be added when first channel creates lines
     
     def _setup_orientation_axis(self, ax, title, color='black'):
         """Setup axis for orientation (roll/pitch/yaw)."""
@@ -224,7 +245,6 @@ class IMUGrapher:
         ax.axhline(y=0, color='black', linestyle='--', alpha=0.3, linewidth=1.5)
         ax.axhline(y=90, color='gray', linestyle=':', alpha=0.2)
         ax.axhline(y=-90, color='gray', linestyle=':', alpha=0.2)
-        # Legend will be added when first channel creates lines
     
     def _setup_position_axis(self, ax, title, color='black'):
         """Setup axis for position."""
@@ -233,7 +253,6 @@ class IMUGrapher:
         ax.set_xlabel('Sample', fontsize=9)
         ax.grid(True, alpha=0.3)
         ax.axhline(y=0, color='black', linestyle='--', alpha=0.3)
-        # Legend will be added when first channel creates lines
     
     def _create_lines_for_channel(self, channel: int):
         """Create line objects for a new channel."""
@@ -243,21 +262,18 @@ class IMUGrapher:
         
         # UNCONVERTED: 3 graphs (accel, gyro, mag)
         if self.mode & GraphMode.UNCONVERTED:
-            # Raw Accelerometer
             ax = self.axes['raw_accel']
             self.lines[channel]['raw_ax'] = ax.plot([], [], color=color, label=f'{label} X', linestyle='-', linewidth=2)[0]
             self.lines[channel]['raw_ay'] = ax.plot([], [], color=color, label=f'{label} Y', linestyle='--', linewidth=2, alpha=0.7)[0]
             self.lines[channel]['raw_az'] = ax.plot([], [], color=color, label=f'{label} Z', linestyle='-.', linewidth=2, alpha=0.7)[0]
             ax.legend(loc='upper right', fontsize=7)
             
-            # Raw Gyroscope
             ax = self.axes['raw_gyro']
             self.lines[channel]['raw_gx'] = ax.plot([], [], color=color, label=f'{label} X', linestyle='-', linewidth=2)[0]
             self.lines[channel]['raw_gy'] = ax.plot([], [], color=color, label=f'{label} Y', linestyle='--', linewidth=2, alpha=0.7)[0]
             self.lines[channel]['raw_gz'] = ax.plot([], [], color=color, label=f'{label} Z', linestyle='-.', linewidth=2, alpha=0.7)[0]
             ax.legend(loc='upper right', fontsize=7)
             
-            # Raw Magnetometer
             ax = self.axes['raw_mag']
             self.lines[channel]['raw_mx'] = ax.plot([], [], color=color, label=f'{label} X', linestyle='-', linewidth=2)[0]
             self.lines[channel]['raw_my'] = ax.plot([], [], color=color, label=f'{label} Y', linestyle='--', linewidth=2, alpha=0.7)[0]
@@ -266,21 +282,18 @@ class IMUGrapher:
         
         # CONVERTED: 3 graphs (accel, gyro, mag)
         if self.mode & GraphMode.CONVERTED:
-            # Accelerometer
             ax = self.axes['conv_accel']
             self.lines[channel]['conv_ax'] = ax.plot([], [], color=color, label=f'{label} X', linestyle='-', linewidth=2)[0]
             self.lines[channel]['conv_ay'] = ax.plot([], [], color=color, label=f'{label} Y', linestyle='--', linewidth=2, alpha=0.7)[0]
             self.lines[channel]['conv_az'] = ax.plot([], [], color=color, label=f'{label} Z', linestyle='-.', linewidth=2, alpha=0.7)[0]
             ax.legend(loc='upper right', fontsize=7)
             
-            # Gyroscope
             ax = self.axes['conv_gyro']
             self.lines[channel]['conv_gx'] = ax.plot([], [], color=color, label=f'{label} X', linestyle='-', linewidth=2)[0]
             self.lines[channel]['conv_gy'] = ax.plot([], [], color=color, label=f'{label} Y', linestyle='--', linewidth=2, alpha=0.7)[0]
             self.lines[channel]['conv_gz'] = ax.plot([], [], color=color, label=f'{label} Z', linestyle='-.', linewidth=2, alpha=0.7)[0]
             ax.legend(loc='upper right', fontsize=7)
             
-            # Magnetometer
             ax = self.axes['conv_mag']
             self.lines[channel]['conv_mx'] = ax.plot([], [], color=color, label=f'{label} X', linestyle='-', linewidth=2)[0]
             self.lines[channel]['conv_my'] = ax.plot([], [], color=color, label=f'{label} Y', linestyle='--', linewidth=2, alpha=0.7)[0]
@@ -289,36 +302,44 @@ class IMUGrapher:
         
         # MADGWICK: 3 graphs (roll, pitch, yaw)
         if self.mode & GraphMode.MADGWICK:
-            # Roll
             ax = self.axes['roll']
             self.lines[channel]['roll'] = ax.plot([], [], color=color, label=label, linestyle='-', linewidth=2.5)[0]
             ax.legend(loc='upper right', fontsize=7)
             
-            # Pitch
             ax = self.axes['pitch']
             self.lines[channel]['pitch'] = ax.plot([], [], color=color, label=label, linestyle='-', linewidth=2.5)[0]
             ax.legend(loc='upper right', fontsize=7)
             
-            # Yaw
             ax = self.axes['yaw']
             self.lines[channel]['yaw'] = ax.plot([], [], color=color, label=label, linestyle='-', linewidth=2.5)[0]
             ax.legend(loc='upper right', fontsize=7)
         
         # DEAD_RECKONING: 3 graphs (pos_x, pos_y, pos_z)
         if self.mode & GraphMode.DEAD_RECKONING:
-            # Position X
             ax = self.axes['pos_x']
             self.lines[channel]['pos_x'] = ax.plot([], [], color=color, label=label, linestyle='-', linewidth=2.5)[0]
             ax.legend(loc='upper right', fontsize=7)
             
-            # Position Y
             ax = self.axes['pos_y']
             self.lines[channel]['pos_y'] = ax.plot([], [], color=color, label=label, linestyle='-', linewidth=2.5)[0]
             ax.legend(loc='upper right', fontsize=7)
             
-            # Position Z
             ax = self.axes['pos_z']
             self.lines[channel]['pos_z'] = ax.plot([], [], color=color, label=label, linestyle='-', linewidth=2.5)[0]
+            ax.legend(loc='upper right', fontsize=7)
+        
+        # CORRECTED: 3 graphs (corr_x, corr_y, corr_z)
+        if self.mode & GraphMode.CORRECTED:
+            ax = self.axes['corr_x']
+            self.lines[channel]['corr_x'] = ax.plot([], [], color=color, label=label, linestyle='-', linewidth=2.5)[0]
+            ax.legend(loc='upper right', fontsize=7)
+            
+            ax = self.axes['corr_y']
+            self.lines[channel]['corr_y'] = ax.plot([], [], color=color, label=label, linestyle='-', linewidth=2.5)[0]
+            ax.legend(loc='upper right', fontsize=7)
+            
+            ax = self.axes['corr_z']
+            self.lines[channel]['corr_z'] = ax.plot([], [], color=color, label=label, linestyle='-', linewidth=2.5)[0]
             ax.legend(loc='upper right', fontsize=7)
     
     def _ensure_channel_exists(self, channel: int):
@@ -404,6 +425,25 @@ class IMUGrapher:
         self.position_data[channel]['y'].append(y)
         self.position_data[channel]['z'].append(z)
     
+    def update_corrected(self, corrected: dict):
+        """Update with corrected position data."""
+        if not (self.mode & GraphMode.CORRECTED):
+            return
+        
+        channel = corrected['channel']
+        
+        # Check if corrected_position exists in packet
+        if 'corrected_position' not in corrected:
+            return
+        
+        self._ensure_channel_exists(channel)
+        
+        x, y, z = corrected['corrected_position']
+        
+        self.corrected_data[channel]['x'].append(x)
+        self.corrected_data[channel]['y'].append(y)
+        self.corrected_data[channel]['z'].append(z)
+    
     def update(self, **kwargs):
         """Convenience method to update all at once."""
         if 'unconverted' in kwargs:
@@ -414,6 +454,8 @@ class IMUGrapher:
             self.update_madgwick(kwargs['madgwick'])
         if 'dead_reckoning' in kwargs:
             self.update_dead_reckoning(kwargs['dead_reckoning'])
+        if 'corrected' in kwargs:
+            self.update_corrected(kwargs['corrected'])
         
         self.packet_count += 1
         if self.packet_count % self.update_interval == 0:
@@ -429,6 +471,8 @@ class IMUGrapher:
                 x = range(len(self.converted_data[channel]['ax']))
             elif self.mode & GraphMode.MADGWICK:
                 x = range(len(self.orientation_data[channel]['roll']))
+            elif self.mode & GraphMode.CORRECTED:
+                x = range(len(self.corrected_data[channel]['x']))
             else:
                 x = range(len(self.position_data[channel]['x']))
             
@@ -471,6 +515,13 @@ class IMUGrapher:
                 self.lines[channel]['pos_x'].set_data(x, list(pos['x']))
                 self.lines[channel]['pos_y'].set_data(x, list(pos['y']))
                 self.lines[channel]['pos_z'].set_data(x, list(pos['z']))
+            
+            # Update corrected
+            if self.mode & GraphMode.CORRECTED:
+                corr = self.corrected_data[channel]
+                self.lines[channel]['corr_x'].set_data(x, list(corr['x']))
+                self.lines[channel]['corr_y'].set_data(x, list(corr['y']))
+                self.lines[channel]['corr_z'].set_data(x, list(corr['z']))
         
         # Rescale axes
         for key, ax in self.axes.items():
@@ -482,11 +533,10 @@ class IMUGrapher:
                 ax.autoscale_view(scalex=True, scaley=True)
         
         try:
-            self.fig.canvas.draw_idle()  # Use draw_idle instead of draw
+            self.fig.canvas.draw_idle()
             self.fig.canvas.flush_events()
-            # Don't use plt.pause() here - it can interfere with asyncio
         except:
-            pass  # Ignore drawing errors
+            pass
     
     def reset_channel(self, channel: int):
         """Clear data for a specific channel."""
@@ -508,6 +558,10 @@ class IMUGrapher:
         if self.mode & GraphMode.DEAD_RECKONING:
             for key in self.position_data[channel]:
                 self.position_data[channel][key].clear()
+        
+        if self.mode & GraphMode.CORRECTED:
+            for key in self.corrected_data[channel]:
+                self.corrected_data[channel][key].clear()
     
     def reset_all(self):
         """Clear all data."""

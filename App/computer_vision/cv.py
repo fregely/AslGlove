@@ -12,26 +12,29 @@ import csv
 from datetime import datetime
 
 SERVICE_UUID = "ffeeddcc-bbaa-0011-2233-445566778899"
-LED_NOTIFY_UUID = "c4e7a180-7b2f-4c95-bfc5-1d5c62123456"
-LED_WRITE_UUID = "01234567-89ab-cdef-0123-456789abcdef"
+IMU_DATA_UUID = "c4e7a180-7b2f-4c95-bfc5-1d5c62123456"
+LED_STATE_UUID = "01234567-89ab-cdef-0123-456789abcdef"  # FIXED - this was wrong!
+
+LED_NOTIFY_UUID = LED_STATE_UUID
+LED_WRITE_UUID = LED_STATE_UUID
 
 CMD_START = bytes([1])
 CMD_NEXT  = bytes([2])
 
 class VisionProcessor:
     """ OpenCV vision processor synchronized with ESP32 LED flasher over BLE."""
-    def __init__(self, client, record: bool = False):
+    def __init__(self, client, record: bool = False, thresh: int = 240, min_area: int =300, max_area: int =10000, min_circ: float =0.6, pixel_per_mm: float =1.0):
         self.client = client
         self.current_led = -1
         self.ready_flag = False
         self.record = record # Enable/disable CSV logging
         
         # processing constants
-        self.THRESH = 240
+        self.THRESH = thresh
         self.kernel = np.ones((3,3), np.uint8)
-        self.MIN_AREA = 300
-        self.MAX_AREA = 10000
-        self.MIN_CIRC = 0.6
+        self.MIN_AREA = min_area
+        self.MAX_AREA = max_area
+        self.MIN_CIRC = min_circ
         self.last_blob_centers = []
         self.last_timestamp = None
         self.last_packet = {}
@@ -39,7 +42,7 @@ class VisionProcessor:
         # LED → IMU offset (approx 7 mm above IMU)
         # PX_PER_MM should be calibrated; 1.0 is a reasonable starting point.
         self.LED_OFFSET_MM = 7.0
-        self.PX_PER_MM = 1.0  # TODO: measure mm→px scale and update this
+        self.PX_PER_MM = pixel_per_mm # TODO: measure mm→px scale and update this
         # Image coords: y increases downward, so to move LED "down" toward IMU,
         # we add a positive dy.
         self.LED_OFFSET_PX = (0, int(self.LED_OFFSET_MM * self.PX_PER_MM))
@@ -57,15 +60,15 @@ class VisionProcessor:
     async def start(self):
         """Start vision + LED sync."""
         print("📹 Starting OpenCV vision processor...")
-        
-        # Subscribe to notifications
-        # await self.client.start_notify(LED_NOTIFY_UUID, self.handler)
 
-        # Tell ESP32 to begin LED loop
+        # Small delay to ensure BLE subscriptions are stable
+        await asyncio.sleep(0.2)
+
+        # Tell ESP32 to begin LED loop 
         await self.client.write_gatt_char(LED_WRITE_UUID, CMD_START)
 
         # Setup camera
-        cap = cv2.VideoCapture(0)
+        cap = cv2.VideoCapture(2)
         cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG')) # type: ignore[attr-defined]
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
@@ -165,10 +168,11 @@ class VisionProcessor:
             # --- LOGGING + CSV  ---
             frame_ts = time.time()
 
-            if blob_centers:
-                print(f"[VISION] LED {self.current_led}: {len(blob_centers)} blob(s) => {debug_info}")
-            else:
-                print(f"[VISION] LED {self.current_led}: no blobs")
+            # I got annoyed with all the console spam, so commenting out for now
+            # if blob_centers:
+            #     print(f"[VISION] LED {self.current_led}: {len(blob_centers)} blob(s) => {debug_info}")
+            # else:
+            #     print(f"[VISION] LED {self.current_led}: no blobs")
 
              # CSV: one row per blob; if none, optionally log a "no blob" row
             if self.csv_writer is not None:

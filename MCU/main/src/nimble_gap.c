@@ -1,6 +1,7 @@
 #include "nimble_common.h"
 #include "nimble_gap.h"
 #include "nimble_gatt.h"
+#include "IRFlasher.h"
 
 /* Private function declarations */
 inline static void format_addr(char *addr_str, uint8_t addr[]);
@@ -164,6 +165,8 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg){
         /* A connection was terminated, print connection descriptor */
             ESP_LOGI(TAG, "disconnected from peer; reason=%d",
             event->disconnect.reason);
+
+            irflasher_reset(); // Reset IR flasher state on disconnect
 
             /* Restart advertising */
             start_advertising();
