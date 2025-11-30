@@ -24,25 +24,25 @@ from imu_processing import (
 )
 
 # Dead reckoning Kalman parameters
-GRAVITY_CONVENTION = 'NED'
-DEAD_Q = 0.1
-DEAD_R = 0.01
-DEAD_P = 0.1
+GRAVITY_CONVENTION = 'NED' # 'NED' or 'ENU' This should be correct 
+DEAD_Q = 0.1 # Process noise
+DEAD_R = 0.01 # Measurement noise
+DEAD_P = 0.1 # Estimate error covariance
 
 # Dead reckoning safety margin for thresholds CALIBRATION
 SAFETY_MARGIN = 1.5
 
 # PID values
-PID_KP = 0.5
-PID_KI = 0.1
-PID_KD = 0.2
+PID_KP = 0.5 # Porportional gain
+PID_KI = 0.1 # Integral gain
+PID_KD = 0.2 # Derivative gain
 
 # OpenCV parameters
-THRESH = 225
-MIN_AREA = 250
-MAX_AREA = 10000
-MIN_CIRC = 0.70
-PIXEL_PER_MM = 1.0
+THRESH = 225 # Binary threshold for LED detection
+MIN_AREA = 250 # Minimum area of detected blob
+MAX_AREA = 10000 # Maximum area of detected blob
+MIN_CIRC = 0.70 # Minimum circularity of detected blob
+PIXEL_PER_MM = 1.0 # Pixels per millimeter conversion
 
 logger = logging.getLogger(__name__)
 MADGWICK_WARMUP_PACKETS = 100
