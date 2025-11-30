@@ -7,6 +7,7 @@ import argparse
 import logging
 import platform
 import math
+import numpy as np  # ADD THIS
 from collections import defaultdict
 
 from computer_vision.cv import VisionProcessor
@@ -21,6 +22,27 @@ from imu_processing import (
     PlaybackClient,
     Control
 )
+
+# Dead reckoning Kalman parameters
+GRAVITY_CONVENTION = 'NED'
+DEAD_Q = 0.1
+DEAD_R = 0.01
+DEAD_P = 0.1
+
+# Dead reckoning safety margin for thresholds CALIBRATION
+SAFETY_MARGIN = 1.5
+
+# PID values
+PID_KP = 0.5
+PID_KI = 0.1
+PID_KD = 0.2
+
+# OpenCV parameters
+THRESH = 225
+MIN_AREA = 250
+MAX_AREA = 10000
+MIN_CIRC = 0.70
+PIXEL_PER_MM = 1.0
 
 logger = logging.getLogger(__name__)
 MADGWICK_WARMUP_PACKETS = 100
@@ -86,7 +108,11 @@ async def main(args):
         'last_position': {},
         'last_orientation': {},
         'update_interval': args.update,
-        'warmup': defaultdict(int)
+        'warmup': defaultdict(int),
+        'calibration_data': defaultdict(lambda: {
+            'accel_samples': [],
+            'gyro_samples': []
+        })
     }   
     
     def log_position_data(state):
@@ -94,7 +120,7 @@ async def main(args):
         channel = state['channel']
         position_tracker['packet_counts'][channel] += 1
         
-        if position_tracker['packet_counts'][channel] % position_tracker['update_interval'] == 0:
+        if position_tracker['packet_counts'][channel] % (4*position_tracker['update_interval']) == 0:
             if 'corrected_position' in state:
                 x, y, z = state['corrected_position']
                 logger.info(f"IMU{channel} Corrected: ({x:+.3f}, {y:+.3f}, {z:+.3f})m")
@@ -119,9 +145,9 @@ async def main(args):
     
     # Initialize Control for position correction
     control = Control(kp=args.pid_kp, ki=args.pid_ki, kd=args.pid_kd)
-    control.px_to_m = args.px_to_m
+    control.px_to_m = 1.0 / (args.px_per_mm * 1000)
     logger.info(f"🎛️  PID Control initialized: Kp={args.pid_kp}, Ki={args.pid_ki}, Kd={args.pid_kd}")
-    logger.info(f"📏 Pixel-to-meter conversion: {args.px_to_m} m/px")
+    logger.info(f"📏 Pixel-to-meter conversion: {control.px_to_m:.6f} m/px ({args.px_per_mm} px/mm)")
     
     # Per-IMU filters
     madgwick_filters = {}
@@ -156,20 +182,37 @@ async def main(args):
             logger.info("📂 Loading recording...")
         else:
             logger.info("📡 Connecting to BLE device...")
-        
-        await client.connect()
-        await client.start_streaming()
-        
-        # Start vision processor (default enabled)
-        vision_task = None
-        vp = None
-        if args.vision:
-            vp = VisionProcessor(client.client, record=args.record)
-            client.set_external_handler(vp.handler)
-            vision_task = asyncio.create_task(vp.start())
-            logger.info("📹 Vision processing enabled")
-        else:
-            logger.info("📹 Vision processing disabled (use --no-vision was specified)")
+            await client.connect()
+            
+            # Start vision processor BEFORE starting IMU streaming
+            vision_task = None
+            vp = None
+            if args.vision:
+                logger.info("📹 Setting up vision processor...")
+                vp = VisionProcessor(
+                    client.client, 
+                    record=args.record, 
+                    thresh=THRESH, 
+                    min_area=MIN_AREA, 
+                    max_area=MAX_AREA, 
+                    min_circ=MIN_CIRC, 
+                    pixel_per_mm=PIXEL_PER_MM
+                )
+                
+                # Register vision handler with BLE client
+                client.set_external_handler(vp.handler)
+                logger.info("✅ Vision handler registered with BLE client")
+            else:
+                logger.info("📹 Vision processing disabled (--no-vision specified)")
+            
+            # Start streaming (subscribes to IMU and LED if vision enabled)
+            await client.start_streaming()
+            logger.info("📡 BLE streaming started")
+            
+            # Start vision task AFTER streaming is set up
+            if args.vision and vp is not None:
+                vision_task = asyncio.create_task(vp.start())
+                logger.info("📹 Vision processing task started")
                 
         logger.info("✅ Connected and streaming")
         logger.info(f"📍 Position logging every {args.update} packets per IMU")
@@ -199,25 +242,92 @@ async def main(args):
                 if vp:
                     cv_packet = vp.get_packet()
                     imu_packet["cv"] = cv_packet
+                    imu_packet["led_index"] = vp.current_led
+                    imu_packet["blob_centers"] = vp.last_blob_centers
+                    imu_packet["blob_timestamp"] = vp.last_timestamp
                 
                 channel = imu_packet['channel']
                 
                 # Convert
                 imu_packet = converter.convert(imu_packet)
                 
-                # Ensure filters exist for this channel
+                # Ensure filters exist for this channel (ONLY ONCE!)
                 if channel not in madgwick_filters:
                     madgwick_filters[channel] = MadgwickFilter(sample_rate=20, beta=0.1)
-                    dead_reckoning_filters[channel] = KalmanDeadReckoning(sample_rate=20, gravity_convention='NED')
+                    dead_reckoning_filters[channel] = KalmanDeadReckoning(
+                        sample_rate=20,
+                        gravity_convention=GRAVITY_CONVENTION,
+                        q=DEAD_Q,
+                        r=DEAD_R,
+                        p=DEAD_P
+                    )
+                    
                     position_tracker['warmup'][channel] = 0
                     logger.info(f"🎯 Initialized processing for IMU channel {channel}")
-                                
+                    
+                    # Prompt user on first IMU
+                    if len(madgwick_filters) == 1:
+                        logger.info("")
+                        logger.info("="*70)
+                        logger.info("🎯 CALIBRATION: Please hold the glove completely still!")
+                        logger.info(f"   Collecting data for {MADGWICK_WARMUP_PACKETS} packets...")
+                        logger.info("="*70)
+                        logger.info("")
+
                 # Process through filters
                 imu_packet = madgwick_filters[channel].process(imu_packet)
                 position_tracker['warmup'][channel] += 1
+
                 if position_tracker['warmup'][channel] <= MADGWICK_WARMUP_PACKETS:
+                    # Collect calibration data during warmup
+                    accel = imu_packet['accel']
+                    gyro = imu_packet['gyro']
+                    
+                    position_tracker['calibration_data'][channel]['accel_samples'].append(accel)
+                    position_tracker['calibration_data'][channel]['gyro_samples'].append(gyro)
+                    
                     if position_tracker['warmup'][channel] % 20 == 0:
                         logger.info(f"⏳ IMU{channel} warming up: {position_tracker['warmup'][channel]}/{MADGWICK_WARMUP_PACKETS}")
+                    
+                    # Calculate and apply calibration when warmup complete
+                    if position_tracker['warmup'][channel] == MADGWICK_WARMUP_PACKETS:
+                        logger.info(f"✅ IMU{channel} warmup complete - calculating thresholds...")
+                        
+                        accel_samples = np.array(position_tracker['calibration_data'][channel]['accel_samples'])
+                        gyro_samples = np.array(position_tracker['calibration_data'][channel]['gyro_samples'])
+                        
+                        # Calculate statistics
+                        accel_magnitudes = np.linalg.norm(accel_samples, axis=1)
+                        accel_deviation = np.abs(accel_magnitudes - 1.0)
+                        accel_std = np.std(accel_deviation)
+                        accel_mean = np.mean(accel_deviation)
+                        
+                        gyro_magnitudes = np.linalg.norm(gyro_samples, axis=1)
+                        gyro_std = np.std(gyro_magnitudes)
+                        gyro_mean = np.mean(gyro_magnitudes)
+                        
+                        accel_variance = np.var(accel_magnitudes)
+                        
+                        # Set thresholds
+                        accel_threshold = (accel_mean + 3 * accel_std) * SAFETY_MARGIN
+                        gyro_threshold = (gyro_mean + 3 * gyro_std) * SAFETY_MARGIN
+                        variance_threshold = accel_variance * SAFETY_MARGIN
+                        
+                        # UPDATE the filter's thresholds
+                        dead_reckoning_filters[channel].ACCEL_STILL_THRESHOLD = accel_threshold
+                        dead_reckoning_filters[channel].GYRO_STILL_THRESHOLD = gyro_threshold
+                        dead_reckoning_filters[channel].ACCEL_VAR_THRESHOLD = variance_threshold
+                        
+                        # Log results
+                        logger.info(f"📊 IMU{channel} Calibrated Thresholds:")
+                        logger.info(f"   Accel: {accel_mean*1000:.2f}mg ± {accel_std*1000:.2f}mg → {accel_threshold*1000:.2f}mg")
+                        logger.info(f"   Gyro:  {np.degrees(gyro_mean):.2f}°/s ± {np.degrees(gyro_std):.2f}°/s → {np.degrees(gyro_threshold):.2f}°/s")
+                        logger.info(f"   Variance: {variance_threshold*1000:.4f}mg²")
+                        logger.info("")
+                        
+                        # Clean up
+                        del position_tracker['calibration_data'][channel]
+                    
                     continue
 
                 # Process dead reckoning (only after warmup)
@@ -225,7 +335,7 @@ async def main(args):
                 if imu_packet.get('calibrating', False):
                     progress = imu_packet.get('calibration_progress', 0)
                     if progress % 10 == 0:
-                        logger.info(f"⏳ IMU{channel} calibrating bias: {progress}/{50} samples")
+                        logger.info(f"⏳ IMU{channel} calibrating bias: {progress}/50 samples")
                     continue
                 
                 # Apply position correction using Control
@@ -350,10 +460,10 @@ if __name__ == "__main__":
     parser.add_argument('graph_options', nargs='*')
     
     # PID parameters
-    parser.add_argument('--pid-kp', type=float, default=0.5, help='PID proportional gain (default: 0.5)')
-    parser.add_argument('--pid-ki', type=float, default=0.1, help='PID integral gain (default: 0.1)')
-    parser.add_argument('--pid-kd', type=float, default=0.2, help='PID derivative gain (default: 0.2)')
-    parser.add_argument('--px-to-m', type=float, default=0.001, help='Pixel to meter conversion (default: 0.001)')
+    parser.add_argument('--pid-kp', type=float, default=PID_KP, help='PID proportional gain')
+    parser.add_argument('--pid-ki', type=float, default=PID_KI, help='PID integral gain')
+    parser.add_argument('--pid-kd', type=float, default=PID_KD, help='PID derivative gain')
+    parser.add_argument('--px-per-mm', type=float, default=PIXEL_PER_MM, help='Pixels per MM')
     
     # Plot options
     parser.add_argument('--no-plot', action='store_true', default=None)
@@ -416,7 +526,7 @@ if __name__ == "__main__":
     )
     
     # Inform user
-    logger.info(f"🎛️  PID enabled: Kp={args.pid_kp}, Ki={args.pid_ki}, Kd={args.pid_kd}, px_to_m={args.px_to_m}")
+    logger.info(f"🎛️  PID enabled: Kp={args.pid_kp}, Ki={args.pid_ki}, Kd={args.pid_kd}, px_to_m={args.px_per_mm}")
     logger.info(f"📹 Vision: {'Enabled' if args.vision else 'Disabled (--no-vision)'}")
     
     if args.playback:

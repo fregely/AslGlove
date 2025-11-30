@@ -1,22 +1,17 @@
+# dead_reckoning.py
 import numpy as np
 import math
 from collections import deque
-  
-# from paper 
-# https://ieeexplore.ieee.org/document/7133658/metrics#metrics
 
 class KalmanDeadReckoning:
-    def __init__(self, sample_rate=20, p=0.1, q=0.01, r=0.1, gravity_convention='NED'):
+    def __init__(self, sample_rate=20, p=0.1, q=0.01, r=0.1, gravity_convention='NED', 
+                 a_still=0.02, g_still=0.052, av_still=0.01):
        
         self.dt = 1.0 / sample_rate
-
         self.state = np.zeros(6)  # [x, y, z, vx, vy, vz]
-
-        self.P = np.eye(6) * p  # Initial covariance
-
-        self.Q = np.eye(6) * q  # Process noise
-
-        self.R = np.eye(3) * r   # Measurement noise
+        self.P = np.eye(6) * p
+        self.Q = np.eye(6) * q
+        self.R = np.eye(3) * r
 
         # Set gravity based on convention
         if gravity_convention == 'NED':
@@ -24,8 +19,8 @@ class KalmanDeadReckoning:
         else:
             self.gravity = np.array([0, 0, -9.81])  # Z up (ENU)
         
-        # BIAS CALIBRATION
-        self.accel_bias = np.zeros(3)
+        # BIAS CALIBRATION - Store WORLD-FRAME bias (what's left after gravity removal)
+        self.world_accel_bias = np.zeros(3)
         self.bias_samples = []
         self.BIAS_CALIBRATION_COUNT = 50
         self.bias_calibrated = False
@@ -35,14 +30,14 @@ class KalmanDeadReckoning:
         self.gyro_history = deque(maxlen=20)
         
         # Thresholds for stationary detection
-        self.ACCEL_STILL_THRESHOLD = 0.05  # g
-        self.GYRO_STILL_THRESHOLD = 0.052  # rad/s (~3 deg/s)
-        self.ACCEL_VAR_THRESHOLD = 0.01    # variance threshold
+        self.ACCEL_STILL_THRESHOLD = a_still
+        self.GYRO_STILL_THRESHOLD = g_still
+        self.ACCEL_VAR_THRESHOLD = av_still
         
         # ZUPT state tracking
         self.zupt_active = False
         self.stationary_time = 0.0
-        self.MIN_ZUPT_TIME = 0.2  # seconds before trusting ZUPT
+        self.MIN_ZUPT_TIME = 0.1  # Reduced from 0.2s for faster response
 
     def _detect_stationary(self, accel_magnitude_g, gyro_magnitude_rad):
         """Detect if IMU is stationary using multiple criteria."""
@@ -103,28 +98,30 @@ class KalmanDeadReckoning:
         # BIAS CALIBRATION PHASE
         # ============================================================
         if not self.bias_calibrated:
-            # Calculate linear acceleration for bias estimation
+            # Calculate world-frame acceleration
             accel_sensor_ms2 = accel_g * 9.81
             accel_world = self._rotate_by_quaternion(accel_sensor_ms2, quaternion)
             linear_accel = accel_world - self.gravity
             
-            # Only collect bias samples when stationary
-            if is_stationary:
+            # Only collect bias samples when HIGHLY confident it's stationary
+            if is_stationary and confidence > 0.8:  # Higher threshold during calibration
                 self.bias_samples.append(linear_accel.copy())
             
             # Check if calibration complete
             if len(self.bias_samples) >= self.BIAS_CALIBRATION_COUNT:
-                self.accel_bias = np.mean(self.bias_samples, axis=0)
+                self.world_accel_bias = np.mean(self.bias_samples, axis=0)
                 self.bias_calibrated = True
-                print(f"✅ Bias calibrated: [{self.accel_bias[0]:+.3f}, "
-                      f"{self.accel_bias[1]:+.3f}, {self.accel_bias[2]:+.3f}] m/s²")
+                print(f"✅ Bias calibrated: [{self.world_accel_bias[0]:+.3f}, "
+                      f"{self.world_accel_bias[1]:+.3f}, {self.world_accel_bias[2]:+.3f}] m/s²")
+                print(f"   (This represents residual error after gravity removal)")
             else:
-                # Still calibrating - update packet and return
+                # Still calibrating
                 packet['position'] = (0.0, 0.0, 0.0)
                 packet['velocity'] = (0.0, 0.0, 0.0)
                 packet['linear_accel'] = tuple(linear_accel)
                 packet['calibrating'] = True
                 packet['calibration_progress'] = len(self.bias_samples)
+                packet['is_stationary'] = is_stationary  # ADD THIS
                 return packet
         
         # ============================================================
@@ -142,13 +139,13 @@ class KalmanDeadReckoning:
             self.zupt_active = False
             self.stationary_time = 0.0
         
-        # Apply ZUPT only after minimum time
-        apply_zupt = self.zupt_active and self.stationary_time >= self.MIN_ZUPT_TIME
+        # Apply ZUPT when stationary (no minimum time needed with good detection)
+        apply_zupt = is_stationary  # Simplified - trust the detection
         
         # Update state (with bias correction)
         result = self.update(quaternion, accel_g, dt, apply_zupt=apply_zupt)
         
-        # UPDATE PACKET IN-PLACE (preserve all original fields!)
+        # UPDATE PACKET IN-PLACE
         packet['position'] = tuple(result['position'])
         packet['velocity'] = tuple(result['velocity'])
         packet['linear_accel'] = tuple(result['linear_accel'])
@@ -156,6 +153,7 @@ class KalmanDeadReckoning:
         packet['accel_bias'] = tuple(result['accel_bias'])
         packet['zupt_applied'] = result['zupt_applied']
         packet['calibrating'] = False
+        packet['is_stationary'] = is_stationary  # ADD THIS
         packet['zupt_info'] = {
             'active': self.zupt_active,
             'confidence': confidence,
@@ -163,36 +161,34 @@ class KalmanDeadReckoning:
             'applied': apply_zupt
         }
         
-        # Return THE SAME packet (now enriched)
         return packet
     
     def _rotate_by_quaternion(self, v, q):
+        """Rotate vector v by quaternion q."""
         w, x, y, z = q
         vx, vy, vz = v
 
-        # Quaternion multiplication q ⊗ v 
-        t0 = w*0   - x*vx - y*vy - z*vz
-        t1 = w*vx  + x*0  + y*vz - z*vy
-        t2 = w*vy  - x*vz + y*0  + z*vx
-        t3 = w*vz  + x*vy - y*vx + z*0
+        # q ⊗ v
+        t0 = -x*vx - y*vy - z*vz
+        t1 = w*vx + y*vz - z*vy
+        t2 = w*vy - x*vz + z*vx
+        t3 = w*vz + x*vy - y*vx
 
-        # Get quaternion conjugate
+        # q* conjugate
         qw_conj = w
         qx_conj = -x
         qy_conj = -y
         qz_conj = -z
         
-        # Multiply temp ⊗ q*
-        result_w = t0*qw_conj - t1*qx_conj - t2*qy_conj - t3*qz_conj
-        result_x = t0*qx_conj + t1*qw_conj + t2*qz_conj - t3*qy_conj
-        result_y = t0*qy_conj - t1*qz_conj + t2*qw_conj + t3*qx_conj
-        result_z = t0*qz_conj + t1*qy_conj - t2*qx_conj + t3*qw_conj
+        # (q ⊗ v) ⊗ q*
+        result_x = t1*qw_conj - t0*qx_conj + t2*qz_conj - t3*qy_conj
+        result_y = t2*qw_conj - t0*qy_conj - t1*qz_conj + t3*qx_conj
+        result_z = t3*qw_conj - t0*qz_conj + t1*qy_conj - t2*qx_conj
 
-        # Extract vector part
         return np.array([result_x, result_y, result_z])
 
     def _predict(self, linear_accel, dt):
-        # Extract current state
+        """Kalman prediction step."""
         pos = self.state[0:3]
         vel = self.state[3:6]
 
@@ -210,14 +206,15 @@ class KalmanDeadReckoning:
         self.P = A @ self.P @ A.T + self.Q
 
     def _update_zupt(self):
+        """Kalman update step - Zero velocity update."""
         # Measurement: velocity is zero
         z = np.zeros(3)
 
-        # Observation matrix
+        # Observation matrix (we measure velocity)
         H = np.zeros((3, 6))
         H[0:3, 3:6] = np.eye(3)
 
-        # Innovation
+        # Innovation (difference between measurement and prediction)
         y = z - H @ self.state
 
         # Innovation covariance
@@ -234,7 +231,7 @@ class KalmanDeadReckoning:
         self.P = (I - K @ H) @ self.P
 
     def update(self, quaternion, accel_sensor_g, dt, apply_zupt=False):        
-        # Convert to numpy arrays
+        """Main update function."""
         quaternion = np.array(quaternion)
         accel_sensor_g = np.array(accel_sensor_g)
         
@@ -247,13 +244,17 @@ class KalmanDeadReckoning:
         # Remove gravity
         linear_accel = accel_world - self.gravity
         
-        # REMOVE BIAS
-        linear_accel_corrected = linear_accel - self.accel_bias
+        # REMOVE CALIBRATED BIAS
+        linear_accel_corrected = linear_accel - self.world_accel_bias
+        
+        # If applying ZUPT, force acceleration to zero (trust stationary detection)
+        if apply_zupt:
+            linear_accel_corrected = np.zeros(3)
         
         # PREDICTION (using corrected acceleration)
         self._predict(linear_accel_corrected, dt)
         
-        # CORRECTION (if ZUPT)
+        # CORRECTION (Zero velocity update)
         if apply_zupt:
             self._update_zupt()
         
@@ -262,18 +263,19 @@ class KalmanDeadReckoning:
             'velocity': self.state[3:6].copy(),
             'linear_accel': linear_accel_corrected,
             'accel_world': accel_world,
-            'accel_bias': self.accel_bias.copy(),
+            'accel_bias': self.world_accel_bias.copy(),
             'zupt_applied': apply_zupt
         }
     
     def reset(self):
+        """Reset filter state."""
         self.state = np.zeros(6)
         self.P = np.eye(6) * 0.1
         self.zupt_active = False
         self.stationary_time = 0.0
         self.accel_history.clear()
         self.gyro_history.clear()
-        self.accel_bias = np.zeros(3)
+        self.world_accel_bias = np.zeros(3)
         self.bias_samples = []
         self.bias_calibrated = False
     

@@ -19,14 +19,17 @@ class BLEClient:
     def __init__(
         self, 
         device_name: str = "ASL_Glove", 
-        characteristic_uuid: str = "c4e7a180-7b2f-4c95-bfc5-1d5c62123456"
+        characteristic_uuid: str = "c4e7a180-7b2f-4c95-bfc5-1d5c62123456",
+        led_uuid: str = "01234567-89ab-cdef-0123-456789abcdef" 
     ):
         self.device_name = device_name
         self.characteristic_uuid = characteristic_uuid
         self.packet_queue = asyncio.Queue()  # Stores raw bytearray (27 bytes)
+        self.led_uuid = led_uuid   # Gets LED notifications
         self.client: Optional[BleakClient] = None
         self.is_connected = False
         self.led_queue = asyncio.Queue()        # LED index (1 byte)
+        self.external_handler = None            # External handler for LED packets
         
     async def connect(self, address: Optional[str] = None, macos_use_bdaddr: bool = False):
         """Connect to the BLE device."""
@@ -60,11 +63,19 @@ class BLEClient:
         if not self.client or not self.is_connected:
             raise RuntimeError("Not connected to device")
         
+        # Subscribe to IMU notifications
         await self.client.start_notify(
             self.characteristic_uuid,
             self._notification_handler
         )
-        logger.info("📡 Streaming data... (Ctrl+C to stop)")
+        logger.info("📡 Subscribed to IMU notifications")
+        
+         # Subscribe to LED notifications
+        await self.client.start_notify(
+            self.led_uuid,
+            self._notification_handler
+        )
+        logger.info("💡 Subscribed to LED notifications")
         
     async def stop_streaming(self):
         """Stop receiving notifications."""

@@ -13,7 +13,7 @@ class Control:
     Applies continuous position correction to IMU data.
     
     - Every packet: Applies current correction offset to IMU position
-    - When CV data arrives: Updates correction offset using PID control
+    - When NEW CV data arrives: Immediately updates correction offset using PID
     - Result: packet gets 'corrected_position' field added
     """
     
@@ -27,6 +27,8 @@ class Control:
         self.correction_offset = {}  # channel -> (offset_x, offset_y)
         self.integral = {}           # channel -> (integral_x, integral_y)
         self.prev_error = {}         # channel -> (error_x, error_y)
+        self.last_corrected_pos = {} # channel -> (x, y) - last corrected position
+        self.last_cv_time = {}       # finger -> timestamp of last CV update
         
         # Latest CV measurements
         self.cv_data = {}  # finger -> (x_px, y_px, timestamp)
@@ -39,22 +41,32 @@ class Control:
         self.px_to_m = 0.001  # 1000 pixels = 1 meter
         
         # Finger to channel mapping
-        self.finger_to_channel = {
-            "thumb": 2,
-            "index": 1,
-            "middle": 0,
-            "ring": 7,
-            "pinky": 6
+        self.imu_to_finger = {
+            2: "thumb",
+            1: "index",
+            0: "middle",
+            7: "ring",
+            6: "pinky"
+        }
+        self.led_to_finger = {
+            1: "thumb",
+            3: "index",
+            20: "middle",
+            7: "ring",
+            6: "pinky"
         }
     
     def process(self, packet):
         """
         Process packet and add corrected_position field.
         
-        Steps:
-        1. Update CV data if present in packet
-        2. Apply current correction offset to IMU position
-        3. If new CV data, update correction offset using PID
+        Uses these fields from packet:
+        - packet['led_index'] - which LED was on
+        - packet['blob_centers'] - list of (x, y) tuples
+        - packet['blob_timestamp'] - timestamp of frame
+        - packet['channel'] - IMU channel
+        - packet['position'] - IMU position
+        - packet['dt'] - time delta
         
         Modifies packet in place by adding:
             packet['corrected_position'] = (x, y, z)
@@ -77,21 +89,55 @@ class Control:
             
             self.imu_time[channel] += dt
         
-        # Check for CV data in packet and update if present
-        new_cv = False
-        if 'cv' in packet and packet['cv']:
-            cv_packet = packet['cv']
-            if 'finger_positions' in cv_packet:
-                cv_timestamp = cv_packet.get('cv_timestamp', time.time())
+        # Store CV data if present AND update correction when NEW CV data arrives
+        if 'led_index' in packet and 'blob_centers' in packet and packet['blob_centers']:
+            led_index = packet['led_index']
+            blob_centers = packet['blob_centers']
+            cv_timestamp = packet.get('blob_timestamp', time.time())
+            
+            # Map LED index to finger
+            cv_finger = self.led_to_finger.get(led_index)
+            
+            # If we found a finger and have exactly one blob
+            if cv_finger and len(blob_centers) == 1:
+                x_px, y_px = blob_centers[0]
                 
-                for finger, pixel_pos in cv_packet['finger_positions'].items():
-                    if pixel_pos is not None:
-                        x_px, y_px = pixel_pos
-                        self.cv_data[finger] = (x_px, y_px, cv_timestamp)
+                # Check if this is NEW CV data (different from what we have stored)
+                is_new_cv_data = False
+                if cv_finger not in self.cv_data:
+                    is_new_cv_data = True
+                else:
+                    old_x, old_y, old_t = self.cv_data[cv_finger]
+                    if (x_px, y_px) != (old_x, old_y) or cv_timestamp != old_t:
+                        is_new_cv_data = True
+                
+                # Store the new CV data
+                self.cv_data[cv_finger] = (x_px, y_px, cv_timestamp)
+                # print(f"[CONTROL] Stored CV data for {cv_finger} (LED {led_index}): ({x_px:.1f}, {y_px:.1f})px")
+                
+                # If this is NEW CV data, update correction for that finger's channel
+                if is_new_cv_data:
+                    # Find which channel this finger belongs to
+                    cv_channel = None
+                    for ch, finger in self.imu_to_finger.items():
+                        if finger == cv_finger:
+                            cv_channel = ch
+                            break
+                    
+                    if cv_channel is not None and cv_channel in self.last_corrected_pos:
+                        # Calculate dt = time since last CV update for this finger
+                        if cv_finger in self.last_cv_time:
+                            cv_dt = cv_timestamp - self.last_cv_time[cv_finger]
+                        else:
+                            cv_dt = 0.1  # Default for first update (~10Hz)
                         
-                        # Check if this CV data is for the current channel
-                        if self.finger_to_channel.get(finger) == channel:
-                            new_cv = True
+                        # Use the last known corrected position for this channel
+                        last_x, last_y = self.last_corrected_pos[cv_channel]
+                        # print(f"[CONTROL] NEW CV data for {cv_finger} (ch{cv_channel}) - updating correction (dt={cv_dt:.3f}s)")
+                        self._update_correction(cv_channel, cv_finger, last_x, last_y, cv_dt)
+                        
+                        # Store this CV timestamp for next dt calculation
+                        self.last_cv_time[cv_finger] = cv_timestamp
         
         # Apply correction to IMU position
         if 'position' in packet and channel is not None:
@@ -105,19 +151,8 @@ class Control:
             
             packet['corrected_position'] = (corrected_x, corrected_y, corrected_z)
             
-            # If new CV data arrived, update the correction offset
-            if new_cv:
-                # Find which finger corresponds to this channel
-                finger = None
-                for f, ch in self.finger_to_channel.items():
-                    if ch == channel:
-                        finger = f
-                        break
-                
-                if finger and finger in self.cv_data:
-                    self._update_correction(channel, finger, 
-                                          corrected_x, corrected_y,
-                                          packet.get('dt', 0.02))
+            # Store this as the last corrected position for this channel
+            self.last_corrected_pos[channel] = (corrected_x, corrected_y)
     
     def _update_correction(self, channel, finger, current_x, current_y, dt):
         """
@@ -140,6 +175,8 @@ class Control:
         error_x = cv_x_m - current_x
         error_y = cv_y_m - current_y
         
+        print(f"[PID] {finger}: CV=({cv_x_m:.3f}, {cv_y_m:.3f})m, IMU=({current_x:.3f}, {current_y:.3f})m, Error=({error_x:.3f}, {error_y:.3f})m")
+        
         # Get previous state
         integral_x, integral_y = self.integral[channel]
         prev_error_x, prev_error_y = self.prev_error[channel]
@@ -157,6 +194,8 @@ class Control:
         i_y = self.ki * integral_y
         d_y = self.kd * (error_y - prev_error_y) / dt if dt > 0 else 0.0
         correction_y = p_y + i_y + d_y
+        
+        print(f"[PID] Correction: ({correction_x*1000:.1f}, {correction_y*1000:.1f})mm")
         
         # Update correction offset
         offset_x, offset_y = self.correction_offset[channel]
@@ -176,5 +215,3 @@ class Control:
             self.correction_offset[channel] = (0.0, 0.0)
             self.integral[channel] = (0.0, 0.0)
             self.prev_error[channel] = (0.0, 0.0)
-
-

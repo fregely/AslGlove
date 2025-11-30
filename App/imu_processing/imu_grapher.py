@@ -51,7 +51,7 @@ class IMUGrapher:
         self,
         mode: GraphMode = GraphMode.CORRECTED,  # Default to showing corrected position
         max_points: int = 200,
-        update_interval: int = 5
+        update_interval: int = 20
     ):
         """
         Initialize grapher.
