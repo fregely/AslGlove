@@ -16,6 +16,7 @@ class Calibrator:
         self.led_gpio_order = led_gpio_order
         self.result_map = {}
         self.vision_task = None
+        
 
     async def _wait_for_blob(self, timeout: float = 4.0) -> tuple | None:
         start = time.time()
@@ -31,17 +32,21 @@ class Calibrator:
         print("\n🔧 === LED Calibration Mode ===\n")
 
         finger_names = ["thumb", "index", "middle", "ring", "pinky"]
+        
+        self.vision_task = asyncio.create_task(self.vision.start())
 
         for idx, gpio in enumerate(self.led_gpio_order):
             finger = finger_names[idx]
 
-            self.vision_task = asyncio.create_task(self.vision.start())
+            
             await asyncio.sleep(1.0)
 
             print(f"👉 Lighting LED for {finger} (GPIO={gpio})...")
 
             # Tell firmware to activate this LED only
             await self.ble.select_led(gpio)
+            self.vision.current_led = gpio
+            await asyncio.sleep(0.1)  # give LED/camera a moment to settle
 
             blob = await self._wait_for_blob()
 

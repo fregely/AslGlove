@@ -15,6 +15,7 @@ import numpy as np
 
 
 SERVICE_UUID = "ffeeddcc-bbaa-0011-2233-445566778899"
+# LED_NOTIFY_UUID = "01234567-89ab-cdef-0123-456789abcdef"
 LED_NOTIFY_UUID = "c4e7a180-7b2f-4c95-bfc5-1d5c62123456"
 LED_WRITE_UUID = "01234567-89ab-cdef-0123-456789abcdef"
 
@@ -125,9 +126,14 @@ class VisionProcessor:
 
         while True:
             # Wait for ESP32 READY
-            while not self.ready_flag:
-                await asyncio.sleep(0.0005)
-            self.ready_flag = False
+            if not self.calibration_mode:
+                # Normal mode: ESP32 paces us
+                while not self.ready_flag:
+                    await asyncio.sleep(0.0005)
+                self.ready_flag = False
+            else:
+                # Calibration mode: Python/camera runs freely
+                await asyncio.sleep(0)  # yield to event loop
 
             ret, frame = cap.read()
             if not ret:
@@ -259,6 +265,7 @@ class VisionProcessor:
             # In normal mode, tell ESP32 to advance LED in its cycle
             if not self.calibration_mode:
                 await self.client.write_gatt_char(LED_WRITE_UUID, CMD_NEXT)
+                await asyncio.sleep(0.01)
 
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
@@ -300,11 +307,11 @@ class VisionProcessor:
 
         # Build LED index → finger map (only once)
         if not hasattr(self, "led_index_to_finger"):
-            led_order = [1, 3, 20, 7, 6]  # GPIO cycle order (corrected)
+            led_order = [1, 3, 20, 7, 6]
             finger_order = ["thumb", "index", "middle", "ring", "pinky"]
             self.led_index_to_finger = {
-                i: finger_order[i]
-                for i in range(len(finger_order))
+                led_order[i]: finger_order[i]
+                for i in range(len(led_order))
             }
 
         # Get finger for this LED frame

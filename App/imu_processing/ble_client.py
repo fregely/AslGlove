@@ -138,13 +138,12 @@ class BLEClient:
         
         
     async def select_led(self, gpio: int) -> None:
-        """Tell ESP32 to turn on exactly GPIO <gpio>."""
         if not self.client:
             raise RuntimeError("BLE client not connected")
 
-        # Write to LED characteristic, not IMU characteristic!
         await self.client.write_gatt_char(
-            self.led_characteristic_uuid,  # FIXED - use LED characteristic
-            CMD_LED_SELECT + bytes([gpio])
+            self.characteristic_uuid,              # (or the command/write UUID — see next section)
+            CMD_LED_SELECT + bytes([gpio]),
+            response=False                         # ✅ important on macOS
         )
         logger.debug(f"Sent CMD_LED_SELECT: GPIO={gpio}")

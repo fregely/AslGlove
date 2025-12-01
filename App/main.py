@@ -135,7 +135,7 @@ async def main(args):
         # vision_task = asyncio.create_task(vp.start())
 
         # GPIOs for each finger in correct order
-        led_gpio_order = [1, 3, 20, 6, 7]
+        led_gpio_order = [1, 3, 20, 7, 6]
 
         calibrator = Calibrator(vp, client, led_gpio_order)
 
@@ -145,7 +145,7 @@ async def main(args):
             await client.select_led(255)
         finally:
             print("🛑 Stopping calibration...")
-            # vision_task.cancel()
+           #  vision_task.cancel()
             await client.stop_streaming()
             await client.disconnect()
 
