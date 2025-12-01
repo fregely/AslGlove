@@ -50,6 +50,9 @@ class VisionProcessor:
         # CSV logging
         self.csv_file = None
         self.csv_writer = None
+        
+        self.finger_positions = {}  # most recent finger→(x,y) mapping
+        self.current_letter = None  # store last recognized letter
 
     def handler(self, _ch, data: bytearray):
         """BLE callback: ESP32 says 'ready—capture next frame'"""
@@ -221,6 +224,18 @@ class VisionProcessor:
                         cv2.FONT_HERSHEY_SIMPLEX, 1, (255,255,0), 2)
             cv2.putText(frame, f"FPS:{fps:.1f}", (10,70),
                         cv2.FONT_HERSHEY_SIMPLEX, 1, (0,255,255), 2)
+            
+            # Show recognized letter if available
+            if self.current_letter:
+                cv2.putText(
+                    frame,
+                    f"Letter: {self.current_letter}",
+                    (20, 120),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    1.5,
+                    (0,255,0),
+                    3
+                )
 
             cv2.imshow("ASL Vision", frame)
 
@@ -244,3 +259,57 @@ class VisionProcessor:
     def get_packet(self):
         """Return the most recent CV packet."""
         return self.last_packet
+    
+    def update_finger_positions(self, mapping: dict):
+        """Called each packet by main.py to sync CV and classification layer."""
+        self.finger_positions = mapping
+        
+    def _assign_fingers(self, blob_centers):
+        """
+        Assign blobs based on LED index (not geometry).
+        Only one LED is on per frame, so this is 100% reliable.
+        """
+
+        # If no LED flash data → skip
+        if self.current_led is None or self.current_led < 0:
+            return self.finger_positions
+
+        # If no blob detected this frame → return previous
+        if not blob_centers:
+            return self.finger_positions
+
+        # We expect exactly 1 blob because only one LED is on
+        cx, cy = blob_centers[0]
+
+        # Build LED index → finger map (only once)
+        if not hasattr(self, "led_index_to_finger"):
+            led_order = [1, 3, 20, 7, 6]
+            finger_order = ["thumb", "index", "middle", "ring", "pinky"]
+            self.led_index_to_finger = {
+                led_order[i]: finger_order[i]
+                for i in range(len(led_order))
+            }
+
+        # Get finger for this LED frame
+        finger = self.led_index_to_finger.get(self.current_led)
+
+        if finger is None:
+            return self.finger_positions
+
+        # Smooth motion
+        alpha = 0.30
+        prev = self.tracked_fingers.get(finger)
+
+        if prev is None:
+            smoothed = (cx, cy)
+        else:
+            px, py = prev
+            sx = alpha * cx + (1 - alpha) * px
+            sy = alpha * cy + (1 - alpha) * py
+            smoothed = (sx, sy)
+
+        # Update finger position
+        self.tracked_fingers[finger] = smoothed
+        self.finger_positions[finger] = smoothed
+
+        return self.finger_positions

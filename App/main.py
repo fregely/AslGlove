@@ -9,6 +9,11 @@ import platform
 import math
 import numpy as np  # ADD THIS
 from collections import defaultdict
+from letter_recognizer import LetterRecognizer
+from imu_processing.control import Control
+
+control = Control()
+recognizer = LetterRecognizer()
 
 from computer_vision.cv import VisionProcessor
 
@@ -341,6 +346,17 @@ async def main(args):
                 # Apply position correction using Control
                 control.process(imu_packet)
                 
+                # Assign blobs to fingers → update finger map
+                if vp and vp.last_blob_centers:
+                    vp._assign_fingers(vp.last_blob_centers)   # if assign lives in VP
+
+                # LETTER RECOGNITION
+                if vp and hasattr(vp, "finger_positions"):
+                    letter = recognizer.classify(vp.finger_positions)
+                    if letter:
+                        vp.current_letter = letter    
+                        print(f"\n🧠 RECOGNIZED LETTER: {letter}\n")
+                                
                 # Update position tracker
                 if channel not in position_tracker['start_position']:
                     if 'position' in imu_packet:
