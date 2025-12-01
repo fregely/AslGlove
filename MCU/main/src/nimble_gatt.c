@@ -145,6 +145,8 @@ static int led_rw_cb(uint16_t conn_handle, uint16_t attr_handle,
         if (cmd == 1) {
             ESP_LOGI(TAG, "BLE CMD_START received");
             irflasher_start();
+        } else if (ir_sync_cmd == 2) {
+            // ESP_LOGI(TAG, "BLE NEXT received");
         }
 
         // ==============================

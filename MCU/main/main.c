@@ -13,19 +13,14 @@ void app_main(void) {
     io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
     io_conf.pin_bit_mask = (1ULL << 1) | (1ULL << 3) | (1ULL << 20) | (1ULL << 6) | (1ULL << 7);
     gpio_config(&io_conf);
+    // Dumps current GPIO configuration to stdout for debugging
+    // gpio_dump_io_configuration(stdout, (1ULL << 1) | (1ULL << 3) | (1ULL << 20) | (1ULL << 6) | (1ULL << 7) | (1ULL << 4) | (1ULL << 5));
 
     start_imu_task();
 
     start_ble_task();
 
     // start IR flasher task
-    xTaskCreate(
-        irflasher_task,      // Task function
-        "IR_Flasher",        // Name (for debugging)
-        4096,                // Stack size (bytes or words depending on config)
-        NULL,                // Task argument
-        4,                   // Priority
-        NULL                 // Task handle (optional)
-    );
+    xTaskCreate(irflasher_task,"IR_Flasher",4096, NULL,4,NULL);
 
 }

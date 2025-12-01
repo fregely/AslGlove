@@ -144,11 +144,11 @@ static void imu_task(void *param) {
             }
             
             // Small delay between channels
-            vTaskDelay(pdMS_TO_TICKS(10));
+            vTaskDelay(pdMS_TO_TICKS(5));
         }
         
         // Delay between full scans
-        vTaskDelay(pdMS_TO_TICKS(50));
+        vTaskDelay(pdMS_TO_TICKS(30));
 
         // Currently running 1.4kB/s can go up to 10kB/s if needed
         // After testing should increase speed, by decreasing delay to 5, and 20, and increasing the I2C speed queue size to 100. 

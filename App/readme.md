@@ -9,6 +9,7 @@ Real-time IMU data processing and visualization for ASL gesture recognition.
 ```bash
 # Go to main directory, and run setup.bat in admin mode
 cd App
+set-executionpolicy remotesigned
 venv\Scripts\activate.bat
 ```
 #### Running the program
@@ -21,6 +22,7 @@ python main.py --playback recording_[timestamp] # Will playback and graph it
 ```
 
 ## Linux / Mac TBD 
+source venv/bin/activate
 
 ## Commands
 
