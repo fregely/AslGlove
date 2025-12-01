@@ -9,6 +9,7 @@ from imu_processing.packet_parser import PacketParser
 
 logger = logging.getLogger(__name__)
 
+CMD_LED_SELECT = bytes([3])
 
 class BLEClient:
     """
@@ -23,7 +24,8 @@ class BLEClient:
         led_uuid: str = "01234567-89ab-cdef-0123-456789abcdef" 
     ):
         self.device_name = device_name
-        self.characteristic_uuid = characteristic_uuid
+        self.characteristic_uuid = characteristic_uuid  # IMU data
+        self.led_characteristic_uuid = led_characteristic_uuid  # LED control
         self.packet_queue = asyncio.Queue()  # Stores raw bytearray (27 bytes)
         self.led_uuid = led_uuid   # Gets LED notifications
         self.client: Optional[BleakClient] = None
@@ -31,7 +33,7 @@ class BLEClient:
         self.led_queue = asyncio.Queue()        # LED index (1 byte)
         self.external_handler = None            # External handler for LED packets
         
-    async def connect(self, address: Optional[str] = None, macos_use_bdaddr: bool = False):
+    async def connect(self, address: Optional[str] = None, macos_use_bdaddr: bool = False) -> None:
         """Connect to the BLE device."""
         logger.info(f"🔍 Scanning for {self.device_name}...")
         
@@ -58,12 +60,13 @@ class BLEClient:
         self.is_connected = True
         logger.info("✅ Connected!")
         
-    async def start_streaming(self):
+    async def start_streaming(self) -> None:
         """Start receiving IMU data notifications."""
         if not self.client or not self.is_connected:
             raise RuntimeError("Not connected to device")
         
         # Subscribe to IMU notifications
+        # Subscribe to IMU data
         await self.client.start_notify(
             self.characteristic_uuid,
             self._notification_handler
@@ -75,15 +78,17 @@ class BLEClient:
             self.led_uuid,
             self._notification_handler
         )
-        logger.info("💡 Subscribed to LED notifications")
+            
+        logger.info("📡 Streaming data... (Ctrl+C to stop)")
         
-    async def stop_streaming(self):
+    async def stop_streaming(self) -> None:
         """Stop receiving notifications."""
         if self.client and self.is_connected:
             await self.client.stop_notify(self.characteristic_uuid)
+            await self.client.stop_notify(self.led_characteristic_uuid)
             logger.info("Stopped streaming")
     
-    async def disconnect(self):
+    async def disconnect(self) -> None:
         """Disconnect from device."""
         if self.client and self.is_connected:
             await self.client.disconnect()
@@ -94,7 +99,7 @@ class BLEClient:
         self, 
         characteristic: BleakGATTCharacteristic, 
         data: bytearray
-    ):
+    ) -> None:
         # LED packet (1 byte)
         if len(data) == 1:
             self.led_queue.put_nowait(data)
@@ -122,7 +127,7 @@ class BLEClient:
         """
         return await self.packet_queue.get()
     
-    async def run_until_disconnected(self, poll_interval: float = 0.1):
+    async def run_until_disconnected(self, poll_interval: float = 0.1) -> None:
         """Keep connection alive until stopped."""
         try:
             while self.client and self.client.is_connected:
@@ -131,5 +136,18 @@ class BLEClient:
             logger.info("🛑 User interrupted")
 
 
-    def set_external_handler(self, handler):
+    def set_external_handler(self, handler: callable) -> None:
+        """ Set an external BLE notification handler. """
         self.external_handler = handler
+        
+        
+    async def select_led(self, gpio: int) -> None:
+        if not self.client:
+            raise RuntimeError("BLE client not connected")
+
+        await self.client.write_gatt_char(
+            self.characteristic_uuid,              # (or the command/write UUID — see next section)
+            CMD_LED_SELECT + bytes([gpio]),
+            response=False                         # ✅ important on macOS
+        )
+        logger.debug(f"Sent CMD_LED_SELECT: GPIO={gpio}")

@@ -4,12 +4,15 @@
 # ------------------------------
 # VISION PROCESSING (OpenCV)
 # ------------------------------
+import json
+import math
 import time
 import asyncio
+from datetime import datetime
+import csv
 import cv2
 import numpy as np
-import csv
-from datetime import datetime
+
 
 SERVICE_UUID = "ffeeddcc-bbaa-0011-2233-445566778899"
 IMU_DATA_UUID = "c4e7a180-7b2f-4c95-bfc5-1d5c62123456"
@@ -23,11 +26,19 @@ CMD_NEXT  = bytes([2])
 
 class VisionProcessor:
     """ OpenCV vision processor synchronized with ESP32 LED flasher over BLE."""
-    def __init__(self, client, record: bool = False, thresh: int = 240, min_area: int =300, max_area: int =10000, min_circ: float =0.6, pixel_per_mm: float =1.0):
+    def __init__(self, client, 
+                 record: bool = False, 
+                 thresh: int = 240, 
+                 min_area: int =300, 
+                 max_area: int =10000, 
+                 min_circ: float =0.6, 
+                 pixel_per_mm: float =1.0,
+                 calibration_mode=False):
         self.client = client
         self.current_led = -1
         self.ready_flag = False
         self.record = record # Enable/disable CSV logging
+        self.calibration_mode = calibration_mode
         
         # processing constants
         self.THRESH = thresh
@@ -50,8 +61,19 @@ class VisionProcessor:
         # CSV logging
         self.csv_file = None
         self.csv_writer = None
-        
-        self.finger_positions = {}  # most recent finger→(x,y) mapping
+       
+        # Load finger calibration map
+        try:
+            with open("finger_map.json", "r") as f:
+                self.finger_map = json.load(f)
+            print("Loaded calibration:", self.finger_map)
+        except:
+            self.finger_map = {}
+            print("No calibration file found.")
+
+        # Store last known finger positions for tracking
+        self.tracked_fingers = {}        # {"thumb": (x,y), ...}
+        self.finger_positions = {}       # output every frame
         self.current_letter = None  # store last recognized letter
 
     def handler(self, _ch, data: bytearray):
@@ -64,11 +86,13 @@ class VisionProcessor:
         """Start vision + LED sync."""
         print("📹 Starting OpenCV vision processor...")
 
-        # Small delay to ensure BLE subscriptions are stable
-        await asyncio.sleep(0.2)
-
-        # Tell ESP32 to begin LED loop 
-        await self.client.write_gatt_char(LED_WRITE_UUID, CMD_START)
+        # Tell ESP32 to begin LED loop
+        # Tell ESP32 to begin LED loop (normal mode only)
+        if not self.calibration_mode:
+            await self.client.write_gatt_char(LED_WRITE_UUID, CMD_START)
+        else:
+            print("📸 Calibration mode: skipping CMD_START (Python drives LEDs with CMD_LED_SELECT)")
+            
 
         # Setup camera
         cap = cv2.VideoCapture(0)
@@ -109,9 +133,14 @@ class VisionProcessor:
 
         while True:
             # Wait for ESP32 READY
-            while not self.ready_flag:
-                await asyncio.sleep(0.0005)
-            self.ready_flag = False
+            if not self.calibration_mode:
+                # Normal mode: ESP32 paces us
+                while not self.ready_flag:
+                    await asyncio.sleep(0.0005)
+                self.ready_flag = False
+            else:
+                # Calibration mode: Python/camera runs freely
+                await asyncio.sleep(0)  # yield to event loop
 
             ret, frame = cap.read()
             if not ret:
@@ -167,6 +196,19 @@ class VisionProcessor:
                 # Optional: draw corrected center marker
                 cv2.circle(frame, (cx, cy), 4, (0, 0, 255), -1)
                 
+            # Finger assignment + tracking
+            self._assign_fingers(blob_centers)
+            
+            # Draw finger labels from tracking
+            for finger, pos in self.finger_positions.items():
+                if pos is None:
+                    continue
+
+                x, y = int(pos[0]), int(pos[1])
+                cv2.circle(frame, (x, y), 8, (255, 0, 0), -1)
+                cv2.putText(frame, finger, (x + 10, y + 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                            (255, 255, 0), 2)
                 
             # --- LOGGING + CSV  ---
             frame_ts = time.time()
@@ -240,7 +282,10 @@ class VisionProcessor:
             cv2.imshow("ASL Vision", frame)
 
             # Let ESP32 advance to next LED
-            await self.client.write_gatt_char(LED_WRITE_UUID, CMD_NEXT)
+            # In normal mode, tell ESP32 to advance LED in its cycle
+            if not self.calibration_mode:
+                await self.client.write_gatt_char(LED_WRITE_UUID, CMD_NEXT)
+                await asyncio.sleep(0.01)
 
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
@@ -264,6 +309,9 @@ class VisionProcessor:
         """Called each packet by main.py to sync CV and classification layer."""
         self.finger_positions = mapping
         
+    def _euclidean(self, a, b):
+        return math.sqrt((a[0] - b[0])**2 + (a[1] - b[1])**2)
+
     def _assign_fingers(self, blob_centers):
         """
         Assign blobs based on LED index (not geometry).

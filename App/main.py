@@ -2,8 +2,50 @@
 # pylint: disable=E1101
 # mypy: ignore-errors
 
+# ------------------------------
+# VISION PROCESSING (OpenCV)
+# ------------------------------
+
+
+# Force X11 backend for OpenCV on Linux (must be before cv2 import)
+import os
+import platform
 import asyncio
 import argparse
+
+# Parse args FIRST (before any imports that use Qt)
+parser = argparse.ArgumentParser(
+    description="ASL Glove IMU Data Pipeline",
+    formatter_class=argparse.RawDescriptionHelpFormatter
+)
+
+# Add all your arguments here
+parser.add_argument('--mode', '-m', type=str, default='position',
+                   choices=['all', 'debug', 'sensor', 'madgwick', 'position', 'graph'])
+parser.add_argument('graph_options', nargs='*')
+parser.add_argument('--no-plot', action='store_true', default=None)
+parser.add_argument('--force-plot', action='store_true')
+parser.add_argument('--record', '-r', action='store_true', default=None)
+parser.add_argument('--no-record', action='store_true')
+parser.add_argument('--vision', action='store_true')
+parser.add_argument('--calibrate', action='store_true')
+parser.add_argument('--output', '-o', type=str)
+parser.add_argument('--update', '-u', type=int, default=5)
+parser.add_argument('--max-points', type=int, default=200)
+parser.add_argument('--playback', '-p', type=str)
+parser.add_argument('--speed', '-s', type=float, default=1.0)
+parser.add_argument('--fast', '-f', action='store_true')
+parser.add_argument('--debug', '-d', action='store_true')
+parser.add_argument('--quiet', '-q', action='store_true')
+
+args = parser.parse_args()
+
+# NOW set environment variables BEFORE imports
+if platform.system() == 'Linux' and args.calibrate:
+    os.environ['QT_QPA_PLATFORM'] = 'xcb'
+    os.environ['QT_LOGGING_RULES'] = '*.debug=false;qt.qpa.*=false'
+
+
 import logging
 import platform
 import math
@@ -15,6 +57,10 @@ from imu_processing.control import Control
 control = Control()
 recognizer = LetterRecognizer()
 
+# if (platform.system() == 'Linux' and args.calibrate):
+#     os.environ['QT_QPA_PLATFORM'] = 'xcb'
+#     os.environ['QT_LOGGING_RULES'] = '*.debug=false;qt.qpa.*=false'
+# for cv functionality
 from computer_vision.cv import VisionProcessor
 
 from imu_processing import (
@@ -105,7 +151,41 @@ def parse_graph_mode(args):
 async def main(args):
     """Main data processing pipeline."""
     
-    # Position tracking for logging
+    # ---------------------------
+    # CALIBRATION MODE EARLY EXIT
+    # ---------------------------
+    if args.calibrate:
+        from computer_vision.calibration import Calibrator
+
+        print("🔧 Entering calibration mode...")
+
+        client = BLEClient()
+        await client.connect()
+        await client.start_streaming()
+
+        vp = VisionProcessor(client.client, record=False, calibration_mode=True)
+        client.set_external_handler(vp.handler)
+        # vision_task = asyncio.create_task(vp.start())
+
+        # GPIOs for each finger in correct order
+        led_gpio_order = [1, 3, 20, 7, 6]
+
+        calibrator = Calibrator(vp, client, led_gpio_order)
+
+        try:
+            await calibrator.run()
+            # When calibration ends, turn all LEDs OFF
+            await client.select_led(255)
+        finally:
+            print("🛑 Stopping calibration...")
+           #  vision_task.cancel()
+            await client.stop_streaming()
+            await client.disconnect()
+
+        print("✅ Calibration complete.")
+        return
+    
+    # Position tracking for logging (always active)
     position_tracker = {
         'packet_counts': defaultdict(int),
         'position': {},
@@ -464,71 +544,21 @@ if __name__ == "__main__":
         description="ASL Glove IMU Data Pipeline with Position Correction",
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    
-    # Mode Selection
-    parser.add_argument(
-        '--mode', '-m',
-        type=str,
-        default='corrected',  # Default to showing corrected position
-        choices=['all', 'debug', 'sensor', 'madgwick', 'position', 'corrected', 'compare', 'graph']
-    )
-    
-    parser.add_argument('graph_options', nargs='*')
-    
-    # PID parameters
-    parser.add_argument('--pid-kp', type=float, default=PID_KP, help='PID proportional gain')
-    parser.add_argument('--pid-ki', type=float, default=PID_KI, help='PID integral gain')
-    parser.add_argument('--pid-kd', type=float, default=PID_KD, help='PID derivative gain')
-    parser.add_argument('--px-per-mm', type=float, default=PIXEL_PER_MM, help='Pixels per MM')
-    
-    # Plot options
-    parser.add_argument('--no-plot', action='store_true', default=None)
-    parser.add_argument('--force-plot', action='store_true')
-    
-    # Recording
-    parser.add_argument('--record', '-r', action='store_true', default=None)
-    parser.add_argument('--no-record', action='store_true')
-    
-    # Vision (default enabled, can disable)
-    parser.add_argument('--no-vision', action='store_true', help='Disable vision processing (default: enabled)')
-    parser.add_argument('--vision', action='store_true', help='Enable vision processing (default: enabled)')  # For backwards compatibility
-    
-    # Other options
-    parser.add_argument('--output', '-o', type=str)
-    parser.add_argument('--update', '-u', type=int, default=20)
-    parser.add_argument('--max-points', type=int, default=200)
-    parser.add_argument('--playback', '-p', type=str)
-    parser.add_argument('--speed', '-s', type=float, default=1.0)
-    parser.add_argument('--fast', '-f', action='store_true')
-    parser.add_argument('--debug', '-d', action='store_true')
-    parser.add_argument('--quiet', '-q', action='store_true')
-    
-    args = parser.parse_args()
-    
-    # Vision defaults
-    if args.no_vision:
-        args.vision = False
-    else:
-        args.vision = True  # Default to enabled
-    
-    # Smart defaults
-    if args.playback:
+       
+    # BLE MODE: Platform-specific defaults
+    if platform.system() == 'Windows':
         if args.no_plot is None:
-            args.no_plot = False
+            args.no_plot = True  # No plot on Windows BLE
         if args.record is None:
-            args.record = False
+            args.record = True  # Auto-record on Windows BLE
     else:
-        if platform.system() == 'Windows':
-            if args.no_plot is None:
-                args.no_plot = True
-            if args.record is None:
-                args.record = True
-        else:
-            if args.no_plot is None:
-                args.no_plot = False
-            if args.record is None:
-                args.record = False
-    
+        # Linux/Mac BLE
+        if args.no_plot is None:
+            args.no_plot = False  # Plot on Linux/Mac
+        if args.record is None:
+            args.record = False  # Don't auto-record on Linux/Mac
+
+    # Handle override flags
     if args.force_plot:
         args.no_plot = False
     if args.no_record:
@@ -555,4 +585,5 @@ if __name__ == "__main__":
             else:
                 logger.warning("  • Plotting enabled (may cause BLE issues!)")
     
+    # Run main
     asyncio.run(main(args))
