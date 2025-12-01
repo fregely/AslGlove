@@ -6,6 +6,7 @@ Updates the offset when CV measurements arrive using PID control.
 """
 
 import time
+from typing import Dict, Tuple
 
 
 class Control:
@@ -16,25 +17,25 @@ class Control:
     - When NEW CV data arrives: Immediately updates correction offset using PID
     - Result: packet gets 'corrected_position' field added
     """
-    
-    def __init__(self, kp=0.5, ki=0.1, kd=0.2):
+    def __init__(self, kp: float = 0.5, ki: float = 0.1, kd: float = 0.2) -> None:
         # PID parameters
         self.kp = kp
         self.ki = ki
         self.kd = kd
         
         # Per-channel correction state
-        self.correction_offset = {}  # channel -> (offset_x, offset_y)
-        self.integral = {}           # channel -> (integral_x, integral_y)
-        self.prev_error = {}         # channel -> (error_x, error_y)
-        self.last_corrected_pos = {} # channel -> (x, y) - last corrected position
-        self.last_cv_time = {}       # finger -> timestamp of last CV update
+        self.correction_offset: Dict[int, Tuple[float, float]] = {}  # channel -> (offset_x, offset_y)
+        self.integral: Dict[int, Tuple[float, float]] = {}           # channel -> (integral_x, integral_y)
+        self.prev_error: Dict[int, Tuple[float, float]] = {}         # channel -> (error_x, error_y)
+        self.last_corrected_pos: Dict[int, Tuple[float, float]] = {} # channel -> (x, y) - last corrected position
+        self.last_cv_time: Dict[str, float] = {}       # finger -> timestamp of last CV update
         
         # Latest CV measurements
-        self.cv_data = {}  # finger -> (x_px, y_px, timestamp)
+        self.cv_data: Dict[str, Tuple[float, float, float]] = {}  # finger -> (x_px, y_px, timestamp)
         
         # Time tracking for IMU
-        self.imu_time = {}
+        self.imu_time: Dict[int, float] = {}
+        self.imu_start_time: Dict[int, float] = {}
         self.imu_start_time = {}
         
         # Pixel to meter conversion (calibrate this!)
@@ -56,7 +57,7 @@ class Control:
             6: "pinky"
         }
     
-    def process(self, packet):
+    def process(self, packet: dict) -> None:
         """
         Process packet and add corrected_position field.
         
@@ -154,7 +155,7 @@ class Control:
             # Store this as the last corrected position for this channel
             self.last_corrected_pos[channel] = (corrected_x, corrected_y)
     
-    def _update_correction(self, channel, finger, current_x, current_y, dt):
+    def _update_correction(self, channel: int, finger: str, current_x: float, current_y: float, dt: float) -> None:
         """
         Update correction offset using PID control.
         
@@ -205,11 +206,11 @@ class Control:
         self.integral[channel] = (integral_x, integral_y)
         self.prev_error[channel] = (error_x, error_y)
     
-    def get_correction_offset(self, channel):
+    def get_correction_offset(self, channel: int) -> Tuple[float, float]:
         """Get current correction offset for a channel."""
         return self.correction_offset.get(channel, (0.0, 0.0))
     
-    def reset_correction(self, channel):
+    def reset_correction(self, channel: int) -> None:
         """Reset correction state for a channel."""
         if channel in self.correction_offset:
             self.correction_offset[channel] = (0.0, 0.0)

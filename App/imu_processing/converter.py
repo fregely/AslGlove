@@ -11,7 +11,7 @@ class IMUConverter:
     3. The scale factor (LSB per physical unit)
     """
     
-    def __init__(self):
+    def __init__(self) -> None:
         # These are the DEFAULT settings for ICM-20948
         # You can change these if you configured your sensor differently  // CHECK THESE VALUES
         
@@ -29,7 +29,7 @@ class IMUConverter:
         # The magnetometer has a fixed scale of 0.15 µT per LSB
         self.mag_scale = 0.15  # µT/LSB
     
-    def set_gyro_bias(self, bias: np.ndarray):
+    def set_gyro_bias(self, bias: np.ndarray) -> None:
         """
         Set gyro bias from calibration.
         
@@ -56,7 +56,7 @@ class IMUConverter:
         return packet
 
 
-    def convert_accelerometer(self, raw_x, raw_y, raw_z):
+    def convert_accelerometer(self, raw_x: int, raw_y: int, raw_z: int) -> tuple:
         """
         Convert raw accelerometer values to g (gravity units).
         
@@ -81,7 +81,7 @@ class IMUConverter:
         
         return (ax_g, ay_g, az_g)
     
-    def convert_gyroscope(self, raw_x, raw_y, raw_z):
+    def convert_gyroscope(self, raw_x: int, raw_y: int, raw_z: int) -> tuple:
         """
         Convert raw gyroscope values to degrees per second (°/s).
         
@@ -112,7 +112,7 @@ class IMUConverter:
         
         return (gx_rad, gy_rad, gz_rad)
     
-    def convert_magnetometer(self, raw_x, raw_y, raw_z):
+    def convert_magnetometer(self, raw_x: int, raw_y: int, raw_z: int) -> tuple:
         """
         Convert raw magnetometer values to microtesla (µT).
         
