@@ -1,4 +1,6 @@
 # asl/letter_recognizer.py
+# pylint: disable=E1101
+# mypy: ignore-errors
 
 import math
 
@@ -13,6 +15,8 @@ class LetterRecognizer:
     """
 
     def classify(self, finger_positions: dict) -> str | None:
+        """ Classify letter based on finger positions.
+            Very rough heuristic rules for demo purposes."""
         if len(finger_positions) < 5:
             return None  # incomplete vision
 
@@ -61,7 +65,7 @@ class LetterRecognizer:
     # -----------------------------
     # Utility helpers
     # -----------------------------
-    def dist(self, p1, p2):
+    def dist(self, p1, p2) -> float:
         return math.dist(p1, p2)
 
     def is_near_thumb(self, thumb, other, thresh=0.025):
