@@ -13,6 +13,18 @@ import platform
 import asyncio
 import argparse
 
+# PID values
+PID_KP = 0.5 # Porportional gain
+PID_KI = 0.1 # Integral gain
+PID_KD = 0.2 # Derivative gain
+
+# OpenCV parameters
+THRESH = 225 # Binary threshold for LED detection
+MIN_AREA = 250 # Minimum area of detected blob
+MAX_AREA = 10000 # Maximum area of detected blob
+MIN_CIRC = 0.70 # Minimum circularity of detected blob
+PIXEL_PER_MM = 1.0 # Pixels per millimeter conversion
+
 # Parse args FIRST (before any imports that use Qt)
 parser = argparse.ArgumentParser(
     description="ASL Glove IMU Data Pipeline",
@@ -27,7 +39,13 @@ parser.add_argument('--no-plot', action='store_true', default=None)
 parser.add_argument('--force-plot', action='store_true')
 parser.add_argument('--record', '-r', action='store_true', default=None)
 parser.add_argument('--no-record', action='store_true')
-parser.add_argument('--vision', action='store_true')
+
+# Vision (default enabled, can disable)
+parser.add_argument('--no-vision', action='store_true', 
+                    help='Disable vision processing (default: enabled)')
+parser.add_argument('--vision', action='store_true', 
+                    help='Enable vision processing (default: enabled)')  # For backwards compatibility
+    
 parser.add_argument('--calibrate', action='store_true')
 parser.add_argument('--output', '-o', type=str)
 parser.add_argument('--update', '-u', type=int, default=5)
@@ -37,6 +55,13 @@ parser.add_argument('--speed', '-s', type=float, default=1.0)
 parser.add_argument('--fast', '-f', action='store_true')
 parser.add_argument('--debug', '-d', action='store_true')
 parser.add_argument('--quiet', '-q', action='store_true')
+
+ # PID parameters
+parser.add_argument('--pid-kp', type=float, default=PID_KP, help='PID proportional gain')
+parser.add_argument('--pid-ki', type=float, default=PID_KI, help='PID integral gain')
+parser.add_argument('--pid-kd', type=float, default=PID_KD, help='PID derivative gain')
+parser.add_argument('--px-per-mm', type=float, default=PIXEL_PER_MM, help='Pixels per MM')
+    
 
 args = parser.parse_args()
 
@@ -82,18 +107,6 @@ DEAD_P = 0.1 # Estimate error covariance
 
 # Dead reckoning safety margin for thresholds CALIBRATION
 SAFETY_MARGIN = 1.5
-
-# PID values
-PID_KP = 0.5 # Porportional gain
-PID_KI = 0.1 # Integral gain
-PID_KD = 0.2 # Derivative gain
-
-# OpenCV parameters
-THRESH = 225 # Binary threshold for LED detection
-MIN_AREA = 250 # Minimum area of detected blob
-MAX_AREA = 10000 # Maximum area of detected blob
-MIN_CIRC = 0.70 # Minimum circularity of detected blob
-PIXEL_PER_MM = 1.0 # Pixels per millimeter conversion
 
 logger = logging.getLogger(__name__)
 MADGWICK_WARMUP_PACKETS = 100
@@ -540,10 +553,6 @@ async def main(args):
         logger.info("✅ Pipeline stopped cleanly")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="ASL Glove IMU Data Pipeline with Position Correction",
-        formatter_class=argparse.RawDescriptionHelpFormatter
-    )
        
     # BLE MODE: Platform-specific defaults
     if platform.system() == 'Windows':
@@ -570,6 +579,35 @@ if __name__ == "__main__":
         level=log_level,
         format="%(asctime)-15s %(levelname)s: %(message)s"
     )
+    
+    # Vision defaults
+    if args.no_vision:
+        args.vision = False
+    else:
+        args.vision = True  # Default to enabled
+    
+    # Smart defaults
+    if args.playback:
+        if args.no_plot is None:
+            args.no_plot = False
+        if args.record is None:
+            args.record = False
+    else:
+        if platform.system() == 'Windows':
+            if args.no_plot is None:
+                args.no_plot = True
+            if args.record is None:
+                args.record = True
+        else:
+            if args.no_plot is None:
+                args.no_plot = False
+            if args.record is None:
+                args.record = False
+    
+    if args.force_plot:
+        args.no_plot = False
+    if args.no_record:
+        args.record = False
     
     # Inform user
     logger.info(f"🎛️  PID enabled: Kp={args.pid_kp}, Ki={args.pid_ki}, Kd={args.pid_kd}, px_to_m={args.px_per_mm}")

@@ -25,7 +25,7 @@ class BLEClient:
     ):
         self.device_name = device_name
         self.characteristic_uuid = characteristic_uuid  # IMU data
-        self.led_characteristic_uuid = led_characteristic_uuid  # LED control
+        self.led_characteristic_uuid = led_uuid  # LED control
         self.packet_queue = asyncio.Queue()  # Stores raw bytearray (27 bytes)
         self.led_uuid = led_uuid   # Gets LED notifications
         self.client: Optional[BleakClient] = None
@@ -85,7 +85,7 @@ class BLEClient:
         """Stop receiving notifications."""
         if self.client and self.is_connected:
             await self.client.stop_notify(self.characteristic_uuid)
-            await self.client.stop_notify(self.led_characteristic_uuid)
+            await self.client.stop_notify(self.led_uuid)
             logger.info("Stopped streaming")
     
     async def disconnect(self) -> None:
