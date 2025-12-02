@@ -10,5 +10,7 @@ void app_main(void) {
 
     start_ble_task();
 
+    // start IR flasher task
+    xTaskCreate(irflasher_task,"IR_Flasher",4096, NULL,5,NULL);
 
 }
