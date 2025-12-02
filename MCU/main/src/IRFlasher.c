@@ -10,6 +10,7 @@ static volatile bool next_flag = false;
 
 // NEW: LED override for calibration (GPIO number), -1 = normal cycling
 static volatile int override_gpio = -1;
+static volatile bool led_state_changed = false;
 
 void irflasher_start(void) {
     started = true;
@@ -22,8 +23,11 @@ void irflasher_next(void) {
 // NEW: Called when Python sends CMD_LED_SELECT
 void irflasher_select_led(int gpio)
 {
-    override_gpio = gpio;    // store requested GPIO
-    next_flag = true;        // force update
+    if (override_gpio != gpio) {  // Only if actually changing
+        override_gpio = gpio;
+        led_state_changed = true;  // Flag that we need to notify
+        next_flag = true;
+    }
 }
 
 void irflasher_notify_ready(uint8_t led) {
@@ -60,7 +64,6 @@ void irflasher_task(void *arg)
         if (!started) {
             current = 0;
             vTaskDelay(pdMS_TO_TICKS(10));
-            continue;
         }
 
         // ===========================================

@@ -146,7 +146,7 @@ class BLEClient:
             raise RuntimeError("BLE client not connected")
 
         await self.client.write_gatt_char(
-            self.characteristic_uuid,              # (or the command/write UUID — see next section)
+            self.led_characteristic_uuid,              # (or the command/write UUID — see next section)
             CMD_LED_SELECT + bytes([gpio]),
             response=False                         # ✅ important on macOS
         )

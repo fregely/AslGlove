@@ -95,7 +95,7 @@ class VisionProcessor:
             
 
         # Setup camera
-        cap = cv2.VideoCapture(0)
+        cap = cv2.VideoCapture(2)
         cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG')) # type: ignore[attr-defined]
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
@@ -140,7 +140,7 @@ class VisionProcessor:
                 self.ready_flag = False
             else:
                 # Calibration mode: Python/camera runs freely
-                await asyncio.sleep(0)  # yield to event loop
+                await asyncio.sleep(0.005)  # yield to event loop
 
             ret, frame = cap.read()
             if not ret:

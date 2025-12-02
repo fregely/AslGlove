@@ -12,7 +12,11 @@ import os
 import platform
 import asyncio
 import argparse
-
+import multiprocessing as mp
+# NOW set environment variables BEFORE imports
+if platform.system() == 'Linux':
+    os.environ['QT_QPA_PLATFORM'] = 'xcb'
+    os.environ['QT_LOGGING_RULES'] = '*.debug=false;qt.qpa.*=false'
 # PID values
 PID_KP = 0.5 # Porportional gain
 PID_KI = 0.1 # Integral gain
@@ -20,10 +24,10 @@ PID_KD = 0.2 # Derivative gain
 
 # OpenCV parameters
 THRESH = 225 # Binary threshold for LED detection
-MIN_AREA = 250 # Minimum area of detected blob
+MIN_AREA = 50 # Minimum area of detected blob
 MAX_AREA = 10000 # Maximum area of detected blob
-MIN_CIRC = 0.70 # Minimum circularity of detected blob
-PIXEL_PER_MM = 1.0 # Pixels per millimeter conversion
+MIN_CIRC = 0.6 # Minimum circularity of detected blob
+PIXEL_PER_MM = 10.0 # Pixels per millimeter conversion
 
 # Parse args FIRST (before any imports that use Qt)
 parser = argparse.ArgumentParser(
@@ -48,7 +52,7 @@ parser.add_argument('--vision', action='store_true',
     
 parser.add_argument('--calibrate', action='store_true')
 parser.add_argument('--output', '-o', type=str)
-parser.add_argument('--update', '-u', type=int, default=5)
+parser.add_argument('--update', '-u', type=int, default=20)
 parser.add_argument('--max-points', type=int, default=200)
 parser.add_argument('--playback', '-p', type=str)
 parser.add_argument('--speed', '-s', type=float, default=1.0)
@@ -65,11 +69,6 @@ parser.add_argument('--px-per-mm', type=float, default=PIXEL_PER_MM, help='Pixel
 
 args = parser.parse_args()
 
-# NOW set environment variables BEFORE imports
-if platform.system() == 'Linux' and args.calibrate:
-    os.environ['QT_QPA_PLATFORM'] = 'xcb'
-    os.environ['QT_LOGGING_RULES'] = '*.debug=false;qt.qpa.*=false'
-
 
 import logging
 import platform
@@ -82,9 +81,6 @@ from imu_processing.control import Control
 control = Control()
 recognizer = LetterRecognizer()
 
-# if (platform.system() == 'Linux' and args.calibrate):
-#     os.environ['QT_QPA_PLATFORM'] = 'xcb'
-#     os.environ['QT_LOGGING_RULES'] = '*.debug=false;qt.qpa.*=false'
 # for cv functionality
 from computer_vision.cv import VisionProcessor
 
@@ -109,7 +105,7 @@ DEAD_P = 0.1 # Estimate error covariance
 SAFETY_MARGIN = 1.5
 
 logger = logging.getLogger(__name__)
-MADGWICK_WARMUP_PACKETS = 100
+MADGWICK_WARMUP_PACKETS = 200
 
 def parse_graph_mode(args):
     """Parse command line arguments to determine GraphMode."""
@@ -176,7 +172,11 @@ async def main(args):
         await client.connect()
         await client.start_streaming()
 
-        vp = VisionProcessor(client.client, record=False, calibration_mode=True)
+        vp = VisionProcessor(client.client, record=False, calibration_mode=True, thresh=THRESH, 
+                    min_area=MIN_AREA, 
+                    max_area=MAX_AREA, 
+                    min_circ=MIN_CIRC, 
+                    pixel_per_mm=PIXEL_PER_MM)
         client.set_external_handler(vp.handler)
         # vision_task = asyncio.create_task(vp.start())
 
@@ -376,6 +376,10 @@ async def main(args):
                 imu_packet = madgwick_filters[channel].process(imu_packet)
                 position_tracker['warmup'][channel] += 1
 
+<<<<<<< HEAD
+                # Calculate and apply calibration when warmup complete
+=======
+>>>>>>> main
                 if position_tracker['warmup'][channel] <= MADGWICK_WARMUP_PACKETS:
                     # Collect calibration data during warmup
                     accel = imu_packet['accel']
@@ -389,38 +393,26 @@ async def main(args):
                     
                     # Calculate and apply calibration when warmup complete
                     if position_tracker['warmup'][channel] == MADGWICK_WARMUP_PACKETS:
-                        logger.info(f"✅ IMU{channel} warmup complete - calculating thresholds...")
+                        logger.info(f"✅ IMU{channel} warmup complete - running calibration...")
                         
                         accel_samples = np.array(position_tracker['calibration_data'][channel]['accel_samples'])
                         gyro_samples = np.array(position_tracker['calibration_data'][channel]['gyro_samples'])
                         
-                        # Calculate statistics
-                        accel_magnitudes = np.linalg.norm(accel_samples, axis=1)
-                        accel_deviation = np.abs(accel_magnitudes - 1.0)
-                        accel_std = np.std(accel_deviation)
-                        accel_mean = np.mean(accel_deviation)
+                        # ============================================================
+                        # ONE METHOD CALL DOES EVERYTHING!
+                        # ============================================================
+                        camera_gravity = np.array([0.0, +9.81, 0.0])  # Camera frame: Y=down
                         
-                        gyro_magnitudes = np.linalg.norm(gyro_samples, axis=1)
-                        gyro_std = np.std(gyro_magnitudes)
-                        gyro_mean = np.mean(gyro_magnitudes)
+                        calib_results = dead_reckoning_filters[channel].calibrate_from_samples(
+                            accel_samples=accel_samples,
+                            gyro_samples=gyro_samples,
+                            madgwick_quaternion=madgwick_filters[channel].get_quaternion(),
+                            target_gravity=camera_gravity,
+                            safety_margin=SAFETY_MARGIN,
+                            logger=logger
+                        )
                         
-                        accel_variance = np.var(accel_magnitudes)
-                        
-                        # Set thresholds
-                        accel_threshold = (accel_mean + 3 * accel_std) * SAFETY_MARGIN
-                        gyro_threshold = (gyro_mean + 3 * gyro_std) * SAFETY_MARGIN
-                        variance_threshold = accel_variance * SAFETY_MARGIN
-                        
-                        # UPDATE the filter's thresholds
-                        dead_reckoning_filters[channel].ACCEL_STILL_THRESHOLD = accel_threshold
-                        dead_reckoning_filters[channel].GYRO_STILL_THRESHOLD = gyro_threshold
-                        dead_reckoning_filters[channel].ACCEL_VAR_THRESHOLD = variance_threshold
-                        
-                        # Log results
-                        logger.info(f"📊 IMU{channel} Calibrated Thresholds:")
-                        logger.info(f"   Accel: {accel_mean*1000:.2f}mg ± {accel_std*1000:.2f}mg → {accel_threshold*1000:.2f}mg")
-                        logger.info(f"   Gyro:  {np.degrees(gyro_mean):.2f}°/s ± {np.degrees(gyro_std):.2f}°/s → {np.degrees(gyro_threshold):.2f}°/s")
-                        logger.info(f"   Variance: {variance_threshold*1000:.4f}mg²")
+                        logger.info(f"✅ IMU{channel} calibration complete")
                         logger.info("")
                         
                         # Clean up
@@ -553,7 +545,9 @@ async def main(args):
         logger.info("✅ Pipeline stopped cleanly")
 
 if __name__ == "__main__":
-       
+    
+    mp.set_start_method('spawn', force=True)  # Cross-platform compatibility
+    
     # BLE MODE: Platform-specific defaults
     if platform.system() == 'Windows':
         if args.no_plot is None:
