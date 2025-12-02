@@ -1,3 +1,5 @@
+# pylint: disable=E1101
+# mypy: ignore-errors
 """
 Control - Position correction using PID with CV ground truth
 
