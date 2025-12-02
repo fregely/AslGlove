@@ -346,6 +346,7 @@ class IMUGrapher:
         """Ensure line objects exist for this channel."""
         if channel not in self.active_channels:
             self.active_channels.add(channel)
+            print(f"[GRAPHER] 📊 Registered new IMU channel: {channel}")
             self._create_lines_for_channel(channel)
     
     def update_unconverted(self, packet: dict):
@@ -432,11 +433,12 @@ class IMUGrapher:
         
         channel = corrected['channel']
         
+        # Ensure channel exists first, THEN check for data
+        self._ensure_channel_exists(channel)
+        
         # Check if corrected_position exists in packet
         if 'corrected_position' not in corrected:
             return
-        
-        self._ensure_channel_exists(channel)
         
         x, y, z = corrected['corrected_position']
         
@@ -459,6 +461,8 @@ class IMUGrapher:
         
         self.packet_count += 1
         if self.packet_count % self.update_interval == 0:
+            if self.packet_count <= 100:  # Log first few redraws
+                print(f"[GRAPHER] 🔄 Redrawing at packet {self.packet_count} (interval={self.update_interval})")
             self._redraw()
     
     def _redraw(self):
@@ -570,4 +574,7 @@ class IMUGrapher:
     
     def close(self):
         """Close the plot window."""
-        plt.close(self.fig)
+        try:
+            plt.close(self.fig)
+        except Exception as e:
+            print(f"⚠️ Error closing grapher: {e}")

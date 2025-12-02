@@ -121,199 +121,221 @@ class VisionProcessor:
 
         # Setup camera
         cap = cv2.VideoCapture(0)
-        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG')) # type: ignore[attr-defined]
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-        cap.set(cv2.CAP_PROP_FPS, 60)
-
-        if not cap.isOpened():
-            print("❌ Could not open camera.")
-            return
         
-        # Setup CSV logging for blobs (only if recording is enabled)
-        if self.record:
-            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"vision_blobs_{ts}.csv"
-            self.csv_file = open(filename, "w", newline="", encoding="utf-8")
-            self.csv_writer = csv.writer(self.csv_file)
-            self.csv_writer.writerow(
-                [
-                    "frame_ts",
-                    "led_index",
-                    "blob_idx",
-                    "cx_px",
-                    "cy_px",
-                    "area_px2",
-                    "circularity",
-                    "raw_cx_px",
-                    "raw_cy_px",
-                ]
-            )
-            print(f"💾 Logging blob data to {filename}")
-        else:
-            print("📝 Blob CSV logging disabled (run with --record to save blobs).")
+        try:
+            cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG')) # type: ignore[attr-defined]
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+            cap.set(cv2.CAP_PROP_FPS, 60)
 
-        
-        prev = time.time()
-
-        while True:
-            # Wait for ESP32 READY
-            while not self.ready_flag:
-                await asyncio.sleep(0.0005)
-            self.ready_flag = False
-
-            ret, frame = cap.read()
-            if not ret:
-                print("❌ Camera error")
-                break
-
-            # --- process frame ---
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            blurred = cv2.GaussianBlur(gray, (5,5), 0)
-
-            _, mask = cv2.threshold(blurred, self.THRESH, 255, cv2.THRESH_BINARY)
-            mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, self.kernel)
-            mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, self.kernel, iterations=2)
-
-            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            blob_centers = []
-            debug_info = []
+            if not cap.isOpened():
+                print("❌ Could not open camera.")
+                return
             
-            for c in contours:
-                area = cv2.contourArea(c)
-                if not (self.MIN_AREA < area < self.MAX_AREA):
-                    continue
-
-                per = cv2.arcLength(c, True)
-                circ = 4*np.pi*area/(per*per+1e-9)
-                if circ < self.MIN_CIRC:
-                    continue
-                
-                M = cv2.moments(c)
-                if M["m00"] == 0:
-                    continue
-                raw_cx = int(M["m10"] / M["m00"])
-                raw_cy = int(M["m01"] / M["m00"])
-
-                # Apply LED→IMU offset in image space
-                dx, dy = self.LED_OFFSET_PX
-                cx = int(raw_cx + dx)
-                cy = int(raw_cy + dy)
-
-                blob_centers.append((cx, cy))
-
-                debug_info.append(
-                    {
-                        "center": (cx, cy),         # corrected center
-                        "raw_center": (raw_cx, raw_cy),
-                        "area": round(area),
-                        "circ": round(circ, 2),
-                    }
+            # Setup CSV logging for blobs (only if recording is enabled)
+            if self.record:
+                ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"vision_blobs_{ts}.csv"
+                self.csv_file = open(filename, "w", newline="", encoding="utf-8")
+                self.csv_writer = csv.writer(self.csv_file)
+                self.csv_writer.writerow(
+                    [
+                        "frame_ts",
+                        "led_index",
+                        "blob_idx",
+                        "cx_px",
+                        "cy_px",
+                        "area_px2",
+                        "circularity",
+                        "raw_cx_px",
+                        "raw_cy_px",
+                    ]
                 )
+                print(f"💾 Logging blob data to {filename}")
+            else:
+                print("📝 Blob CSV logging disabled (run with --record to save blobs).")
 
-                x, y, w, h = cv2.boundingRect(c)
-                cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
-                # Optional: draw corrected center marker
-                cv2.circle(frame, (cx, cy), 4, (0, 0, 255), -1)
-                
-                
-            # --- LOGGING + CSV  ---
-            frame_ts = time.time()
-
-            # I got annoyed with all the console spam, so commenting out for now
-            # if blob_centers:
-            #     print(f"[VISION] LED {self.current_led}: {len(blob_centers)} blob(s) => {debug_info}")
-            # else:
-            #     print(f"[VISION] LED {self.current_led}: no blobs")
-
-             # CSV: one row per blob; if none, optionally log a "no blob" row
-            if self.csv_writer is not None:
-                if blob_centers:
-                    for idx, info in enumerate(debug_info):
-                        cx, cy = info["center"]
-                        raw_cx, raw_cy = info["raw_center"]
-                        area = info["area"]
-                        circ = info["circ"]
-                        self.csv_writer.writerow(
-                            [
-                                frame_ts,
-                                self.current_led,
-                                idx,
-                                cx,
-                                cy,
-                                area,
-                                circ,
-                                raw_cx,
-                                raw_cy,
-                            ]
-                        )
-                else:
-                    # Optional: still log the LED flash with no blob
-                    self.csv_writer.writerow(
-                        [frame_ts, self.current_led, -1, "", "", "", "", "", ""]
-                    )
-                    
-            self.last_blob_centers = blob_centers
-            self.last_timestamp = frame_ts
-                
-            self.last_packet = {
-                "cv_timestamp": frame_ts,
-                "led_index": self.current_led,
-                "blob_centers": blob_centers,
-                "raw_blob_centers": [info["raw_center"] for info in debug_info],
-                "num_blobs": len(blob_centers),
-            }
             
-            # Automatically assign fingers from detected blobs
-            if blob_centers:
-                self._assign_fingers(blob_centers)
-            
-            # ---------- FPS ----------
-            now = time.time()
-            fps = 1/(now-prev)
-            prev = now
+            prev = time.time()
 
-            cv2.putText(frame, f"LED:{self.current_led}", (10,30),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1, (255,255,0), 2)
-            cv2.putText(frame, f"FPS:{fps:.1f}", (10,70),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0,255,255), 2)
-            
-            # Show recognized letter if available
-            if self.current_letter:
-                cv2.putText(
-                    frame,
-                    f"Letter: {self.current_letter}",
-                    (20, 120),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    1.5,
-                    (0,255,0),
-                    3
-                )
+            while True:
+                # Wait for ESP32 READY
+                while not self.ready_flag:
+                    await asyncio.sleep(0.0005)
+                self.ready_flag = False
 
-            cv2.imshow("ASL Vision", frame)
-
-            # Let ESP32 advance to next LED
-            if not self.cancelled:
-                try:
-                    await self.client.write_gatt_char(LED_WRITE_UUID, CMD_NEXT)
-                except Exception:
-                    # BLE connection lost or task cancelled
+                ret, frame = cap.read()
+                if not ret:
+                    print("❌ Camera error")
                     break
 
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
+                # --- process frame ---
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                blurred = cv2.GaussianBlur(gray, (5,5), 0)
 
-        self.cancelled = True
-        cap.release()
-        cv2.destroyAllWindows()
-        
-        if self.csv_file is not None:
-            self.csv_file.close()
-            print("💾 Closed blob CSV file.")
+                _, mask = cv2.threshold(blurred, self.THRESH, 255, cv2.THRESH_BINARY)
+                mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, self.kernel)
+                mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, self.kernel, iterations=2)
 
+                contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                blob_centers = []
+                debug_info = []
+                
+                for c in contours:
+                    area = cv2.contourArea(c)
+                    if not (self.MIN_AREA < area < self.MAX_AREA):
+                        continue
 
-        # await self.client.stop_notify(LED_NOTIFY_UUID)
-        print("📴 Vision processor stopped.")
+                    per = cv2.arcLength(c, True)
+                    circ = 4*np.pi*area/(per*per+1e-9)
+                    if circ < self.MIN_CIRC:
+                        continue
+                    
+                    M = cv2.moments(c)
+                    if M["m00"] == 0:
+                        continue
+                    raw_cx = int(M["m10"] / M["m00"])
+                    raw_cy = int(M["m01"] / M["m00"])
+
+                    # Apply LED→IMU offset in image space
+                    dx, dy = self.LED_OFFSET_PX
+                    cx = int(raw_cx + dx)
+                    cy = int(raw_cy + dy)
+
+                    blob_centers.append((cx, cy))
+
+                    debug_info.append(
+                        {
+                            "center": (cx, cy),         # corrected center
+                            "raw_center": (raw_cx, raw_cy),
+                            "area": round(area),
+                            "circ": round(circ, 2),
+                        }
+                    )
+
+                    x, y, w, h = cv2.boundingRect(c)
+                    cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                    # Optional: draw corrected center marker
+                    cv2.circle(frame, (cx, cy), 4, (0, 0, 255), -1)
+                    
+                    
+                # --- LOGGING + CSV  ---
+                frame_ts = time.time()
+
+                # I got annoyed with all the console spam, so commenting out for now
+                # if blob_centers:
+                #     print(f"[VISION] LED {self.current_led}: {len(blob_centers)} blob(s) => {debug_info}")
+                # else:
+                #     print(f"[VISION] LED {self.current_led}: no blobs")
+
+                # CSV: one row per blob; if none, optionally log a "no blob" row
+                if self.csv_writer is not None:
+                    if blob_centers:
+                        for idx, info in enumerate(debug_info):
+                            cx, cy = info["center"]
+                            raw_cx, raw_cy = info["raw_center"]
+                            area = info["area"]
+                            circ = info["circ"]
+                            self.csv_writer.writerow(
+                                [
+                                    frame_ts,
+                                    self.current_led,
+                                    idx,
+                                    cx,
+                                    cy,
+                                    area,
+                                    circ,
+                                    raw_cx,
+                                    raw_cy,
+                                ]
+                            )
+                    else:
+                        # Optional: still log the LED flash with no blob
+                        self.csv_writer.writerow(
+                            [frame_ts, self.current_led, -1, "", "", "", "", "", ""]
+                        )
+                        
+                self.last_blob_centers = blob_centers
+                self.last_timestamp = frame_ts
+                    
+                self.last_packet = {
+                    "cv_timestamp": frame_ts,
+                    "led_index": self.current_led,
+                    "blob_centers": blob_centers,
+                    "raw_blob_centers": [info["raw_center"] for info in debug_info],
+                    "num_blobs": len(blob_centers),
+                }
+                
+                # Automatically assign fingers from detected blobs
+                if blob_centers:
+                    self._assign_fingers(blob_centers)
+                
+                # ---------- FPS ----------
+                now = time.time()
+                fps = 1/(now-prev)
+                prev = now
+
+                cv2.putText(frame, f"LED:{self.current_led}", (10,30),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1, (255,255,0), 2)
+                cv2.putText(frame, f"FPS:{fps:.1f}", (10,70),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0,255,255), 2)
+                
+                # Show recognized letter if available
+                if self.current_letter:
+                    cv2.putText(
+                        frame,
+                        f"Letter: {self.current_letter}",
+                        (20, 120),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        1.5,
+                        (0,255,0),
+                        3
+                    )
+
+                cv2.imshow("ASL Vision", frame)
+
+                # Check for 'q' key press BEFORE async operations
+                key = cv2.waitKey(1) & 0xFF
+                if key == ord('q'):
+                    print("👋 User pressed 'q' - stopping vision...")
+                    break
+
+                # Let ESP32 advance to next LED
+                if not self.cancelled:
+                    try:
+                        await self.client.write_gatt_char(LED_WRITE_UUID, CMD_NEXT)
+                    except asyncio.CancelledError:
+                        print("🛑 Vision task cancelled")
+                        break
+                    except Exception as e:
+                        # BLE connection lost
+                        print(f"⚠️ BLE write error: {e}")
+                        break
+
+        except asyncio.CancelledError:
+            print("🛑 Vision processing cancelled")
+        except KeyboardInterrupt:
+            print("🛑 Vision interrupted by keyboard")
+        except Exception as e:
+            print(f"❌ Vision error: {e}")
+        finally:
+            self.cancelled = True
+            try:
+                cap.release()
+                cv2.destroyAllWindows()
+                # Give OpenCV time to cleanup
+                await asyncio.sleep(0.1)
+            except Exception as e:
+                print(f"⚠️ Cleanup warning: {e}")
+            
+            if self.csv_file is not None:
+                try:
+                    self.csv_file.close()
+                    print("💾 Closed blob CSV file.")
+                except Exception:
+                    pass
+
+            print("📴 Vision processor stopped.")
         
     def get_packet(self):
         """Return the most recent CV packet."""

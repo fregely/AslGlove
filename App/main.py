@@ -568,13 +568,22 @@ async def main(args):
         logger.info("🛑 Stopping pipeline (Ctrl+C)...")
     
     finally:
+        # Cancel vision task first
+        if 'vision_task' in locals() and vision_task:
+            logger.info("🛑 Cancelling vision task...")
+            vision_task.cancel()
+            try:
+                await vision_task
+            except asyncio.CancelledError:
+                pass
+            except Exception as e:
+                logger.warning(f"Vision task cleanup: {e}")
+        
         # Print final summary
         logger.info("")
         logger.info("="*70)
         logger.info("📊 FINAL POSITION SUMMARY")
         logger.info("="*70)
-        if vision_task:
-            vision_task.cancel()
         
         for ch in sorted(position_tracker['packet_counts'].keys()):
             count = position_tracker['packet_counts'][ch]
@@ -603,14 +612,22 @@ async def main(args):
         
         logger.info("="*70)
         
-        # Cleanup
+        # Cleanup BLE
         try:
+            logger.info("🛑 Stopping BLE streaming...")
             await client.stop_streaming()
-            await client.disconnect()
-        except:
-            pass
+        except Exception as e:
+            logger.debug(f"Stop streaming: {e}")
         
+        try:
+            logger.info("🛑 Disconnecting BLE...")
+            await client.disconnect()
+        except Exception as e:
+            logger.debug(f"Disconnect: {e}")
+        
+        # Close grapher
         if grapher:
+            logger.info("🛑 Closing grapher...")
             grapher.close()
         
         # Save recording if enabled
