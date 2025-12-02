@@ -2,36 +2,36 @@
     "1": {
         "finger": "thumb",
         "center": [
-            68,
-            540
+            549,
+            289
         ]
     },
     "3": {
         "finger": "index",
         "center": [
-            70,
-            541
+            822,
+            283
         ]
     },
     "20": {
         "finger": "middle",
         "center": [
-            70,
-            540
+            820,
+            281
         ]
     },
     "7": {
         "finger": "ring",
         "center": [
-            68,
-            531
+            978,
+            517
         ]
     },
     "6": {
         "finger": "pinky",
         "center": [
-            769,
-            516
+            830,
+            282
         ]
     }
 }

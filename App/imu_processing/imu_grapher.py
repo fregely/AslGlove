@@ -6,9 +6,19 @@ import sys
 import platform
 import matplotlib
 
+# Use best backend for each OS
 if platform.system() == 'Windows':
     matplotlib.use('qt5agg')
-else:
+elif platform.system() == 'Darwin':  # macOS
+    # Try MacOSX first (native, most reliable), fall back to TkAgg
+    try:
+        matplotlib.use('MacOSX')
+    except:
+        try:
+            matplotlib.use('Qt5Agg')  # Better than TkAgg for interactive use
+        except:
+            matplotlib.use('TkAgg')  # Last resort
+else:  # Linux
     matplotlib.use('TkAgg')
 
 import matplotlib.pyplot as plt
@@ -536,11 +546,22 @@ class IMUGrapher:
             else:
                 ax.autoscale_view(scalex=True, scaley=True)
         
+        # Update canvas - try multiple methods for compatibility
         try:
+            # Method 1: draw_idle + flush (best for most backends)
             self.fig.canvas.draw_idle()
             self.fig.canvas.flush_events()
-        except:
-            pass
+        except Exception as e1:
+            try:
+                # Method 2: direct draw (more aggressive, works on macOS)
+                self.fig.canvas.draw()
+            except Exception as e2:
+                try:
+                    # Method 3: pause (forces event processing on some backends)
+                    plt.pause(0.001)
+                except Exception as e3:
+                    # Give up silently
+                    pass
     
     def reset_channel(self, channel: int):
         """Clear data for a specific channel."""
