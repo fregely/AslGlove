@@ -2,19 +2,87 @@
 # pylint: disable=E1101
 # mypy: ignore-errors
 
+# ------------------------------
+# VISION PROCESSING (OpenCV)
+# ------------------------------
+# Force X11 backend for OpenCV on Linux (must be before cv2 import)
+import os
+import platform
 import asyncio
 import argparse
+import multiprocessing as mp
+# NOW set environment variables BEFORE imports
+if platform.system() == 'Linux':
+    os.environ['QT_QPA_PLATFORM'] = 'xcb'
+    os.environ['QT_LOGGING_RULES'] = '*.debug=false;qt.qpa.*=false'
+# PID values
+PID_KP = 0.5 # Porportional gain
+PID_KI = 0.1 # Integral gain
+PID_KD = 0.2 # Derivative gain
+
+# OpenCV parameters
+THRESH = 225 # Binary threshold for LED detection
+MIN_AREA = 50 # Minimum area of detected blob
+MAX_AREA = 10000 # Maximum area of detected blob
+MIN_CIRC = 0.6 # Minimum circularity of detected blob
+PIXEL_PER_MM = 10.0 # Pixels per millimeter conversion
+
+# Parse args FIRST (before any imports that use Qt)
+parser = argparse.ArgumentParser(
+    description="ASL Glove IMU Data Pipeline",
+    formatter_class=argparse.RawDescriptionHelpFormatter
+)
+
+# Add all your arguments here
+parser.add_argument('--mode', '-m', type=str, default='position',
+                   choices=['all', 'debug', 'sensor', 'madgwick', 'position', 'graph'])
+parser.add_argument('graph_options', nargs='*')
+parser.add_argument('--no-plot', action='store_true', default=None)
+parser.add_argument('--force-plot', action='store_true')
+parser.add_argument('--record', '-r', action='store_true', default=None)
+parser.add_argument('--no-record', action='store_true')
+
+# Vision (default enabled, can disable)
+parser.add_argument('--no-vision', action='store_true', 
+                    help='Disable vision processing (default: enabled)')
+parser.add_argument('--vision', action='store_true', 
+                    help='Enable vision processing (default: enabled)')  # For backwards compatibility
+    
+parser.add_argument('--calibrate', action='store_true')
+parser.add_argument('--output', '-o', type=str)
+parser.add_argument('--update', '-u', type=int, default=20)
+parser.add_argument('--max-points', type=int, default=200)
+parser.add_argument('--playback', '-p', type=str)
+parser.add_argument('--speed', '-s', type=float, default=1.0)
+parser.add_argument('--fast', '-f', action='store_true')
+parser.add_argument('--debug', '-d', action='store_true')
+parser.add_argument('--quiet', '-q', action='store_true')
+
+ # PID parameters
+parser.add_argument('--pid-kp', type=float, default=PID_KP, help='PID proportional gain')
+parser.add_argument('--pid-ki', type=float, default=PID_KI, help='PID integral gain')
+parser.add_argument('--pid-kd', type=float, default=PID_KD, help='PID derivative gain')
+parser.add_argument('--px-per-mm', type=float, default=PIXEL_PER_MM, help='Pixels per MM')
+    
+
+args = parser.parse_args()
+
+
 import logging
 import platform
 import math
 import numpy as np  # ADD THIS
 from collections import defaultdict
-from letter_recognizer import LetterRecognizer
+from letter_recognizer2 import LetterRecognizer2
 from imu_processing.control import Control
 
 control = Control()
-recognizer = LetterRecognizer()
+recognizer = LetterRecognizer2()
 
+# Try to load existing calibration data
+recognizer.load_calibration()
+
+# for cv functionality
 from computer_vision.cv import VisionProcessor
 
 from imu_processing import (
@@ -37,20 +105,8 @@ DEAD_P = 0.1 # Estimate error covariance
 # Dead reckoning safety margin for thresholds CALIBRATION
 SAFETY_MARGIN = 1.5
 
-# PID values
-PID_KP = 0.5 # Porportional gain
-PID_KI = 0.1 # Integral gain
-PID_KD = 0.2 # Derivative gain
-
-# OpenCV parameters
-THRESH = 225 # Binary threshold for LED detection
-MIN_AREA = 250 # Minimum area of detected blob
-MAX_AREA = 10000 # Maximum area of detected blob
-MIN_CIRC = 0.70 # Minimum circularity of detected blob
-PIXEL_PER_MM = 1.0 # Pixels per millimeter conversion
-
 logger = logging.getLogger(__name__)
-MADGWICK_WARMUP_PACKETS = 100
+MADGWICK_WARMUP_PACKETS = 200
 
 def parse_graph_mode(args):
     """Parse command line arguments to determine GraphMode."""
@@ -105,7 +161,126 @@ def parse_graph_mode(args):
 async def main(args):
     """Main data processing pipeline."""
     
-    # Position tracking for logging
+    # ---------------------------
+    # CALIBRATION MODE EARLY EXIT
+    # ---------------------------
+    if args.calibrate:
+        from computer_vision.calibration import Calibrator
+
+        print("🔧 Entering calibration mode...")
+
+        client = BLEClient()
+        await client.connect()
+        await client.start_streaming()
+
+        vp = VisionProcessor(client.client, record=False, thresh=THRESH, 
+                    min_area=MIN_AREA, 
+                    max_area=MAX_AREA, 
+                    min_circ=MIN_CIRC, 
+                    pixel_per_mm=PIXEL_PER_MM)
+        client.set_external_handler(vp.handler)
+        # vision_task = asyncio.create_task(vp.start())
+
+        # GPIOs for each finger in correct order
+        led_gpio_order = [1, 3, 20, 7, 6]
+
+        calibrator = Calibrator(vp, client, led_gpio_order)
+
+        try:
+            vision_task = await calibrator.run()
+            
+            # Stop the first vision task
+            print("\n🛑 Stopping LED calibration vision task...")
+            if vision_task:
+                vision_task.cancel()
+                try:
+                    await vision_task
+                except asyncio.CancelledError:
+                    pass
+            
+            # Turn off LED override mode and restart normal cycling
+            await client.select_led(255)  # Turn all LEDs OFF
+            await asyncio.sleep(0.5)
+            
+            # Now perform open-hand calibration for letter recognition
+            print("\n" + "="*50)
+            print("📋 OPEN HAND CALIBRATION FOR LETTER RECOGNITION")
+            print("="*50)
+            print("\nInstructions:")
+            print("1. Hold your hand completely open and flat")
+            print("2. Keep all fingers extended and spread apart")
+            print("3. Hold still for about 3 seconds")
+            print("\nPress Enter when ready...")
+            input()
+            
+            # Create a fresh vision processor for open-hand calibration
+            vp2 = VisionProcessor(client.client, record=False, thresh=THRESH, 
+                        min_area=MIN_AREA, 
+                        max_area=MAX_AREA, 
+                        min_circ=MIN_CIRC, 
+                        pixel_per_mm=PIXEL_PER_MM)
+            # Ensure the finger map is loaded
+            vp2.load_finger_map("finger_map.json")
+            client.set_external_handler(vp2.handler)
+            
+            # Start vision processing for calibration
+            print("📹 Starting vision processor for open-hand calibration...")
+            vision_task = asyncio.create_task(vp2.start())
+            await asyncio.sleep(2.0)  # Give vision time to start
+            
+            # Wait for all finger positions to be populated
+            print("⏳ Waiting for all 5 LEDs to cycle through...")
+            timeout = 30.0  # Increased timeout
+            start_time = asyncio.get_event_loop().time()
+            last_count = 0
+            
+            while len(vp2.finger_positions) < 5:
+                current_count = len(vp2.finger_positions)
+                if current_count != last_count:
+                    detected = list(vp2.finger_positions.keys())
+                    print(f"   Detected {current_count}/5 fingers: {detected}")
+                    last_count = current_count
+                
+                if asyncio.get_event_loop().time() - start_time > timeout:
+                    print("⚠️ Warning: Not all fingers detected after 30 seconds")
+                    print(f"   Detected fingers: {list(vp2.finger_positions.keys())}")
+                    print(f"   Missing fingers: {[f for f in ['thumb','index','middle','ring','pinky'] if f not in vp2.finger_positions]}")
+                    print("   Check that all LEDs are working and visible to camera")
+                    break
+                await asyncio.sleep(0.2)
+            
+            if len(vp2.finger_positions) == 5:
+                print(f"✅ All 5 fingers detected: {list(vp2.finger_positions.keys())}")
+            else:
+                print("\n⚠️  Continuing with partial finger detection - calibration may be incomplete")
+            
+            try:
+                # Run open-hand calibration
+                await recognizer.calibrate_open_hand(vp2, samples=50)
+            except (KeyboardInterrupt, asyncio.CancelledError):
+                print("\n⚠️ Open-hand calibration skipped")
+            finally:
+                # Stop vision
+                vision_task.cancel()
+                try:
+                    await vision_task
+                except asyncio.CancelledError:
+                    pass
+                
+        except KeyboardInterrupt:
+            print("\n⚠️ Calibration interrupted by user")
+        finally:
+            print("🛑 Stopping calibration...")
+            try:
+                await client.stop_streaming()
+                await client.disconnect()
+            except:
+                pass
+
+        print("✅ Calibration complete.")
+        return
+    
+    # Position tracking for logging (always active)
     position_tracker = {
         'packet_counts': defaultdict(int),
         'position': {},
@@ -296,38 +471,26 @@ async def main(args):
                     
                     # Calculate and apply calibration when warmup complete
                     if position_tracker['warmup'][channel] == MADGWICK_WARMUP_PACKETS:
-                        logger.info(f"✅ IMU{channel} warmup complete - calculating thresholds...")
+                        logger.info(f"✅ IMU{channel} warmup complete - running calibration...")
                         
                         accel_samples = np.array(position_tracker['calibration_data'][channel]['accel_samples'])
                         gyro_samples = np.array(position_tracker['calibration_data'][channel]['gyro_samples'])
                         
-                        # Calculate statistics
-                        accel_magnitudes = np.linalg.norm(accel_samples, axis=1)
-                        accel_deviation = np.abs(accel_magnitudes - 1.0)
-                        accel_std = np.std(accel_deviation)
-                        accel_mean = np.mean(accel_deviation)
+                        # ============================================================
+                        # ONE METHOD CALL DOES EVERYTHING!
+                        # ============================================================
+                        camera_gravity = np.array([0.0, +9.81, 0.0])  # Camera frame: Y=down
                         
-                        gyro_magnitudes = np.linalg.norm(gyro_samples, axis=1)
-                        gyro_std = np.std(gyro_magnitudes)
-                        gyro_mean = np.mean(gyro_magnitudes)
+                        calib_results = dead_reckoning_filters[channel].calibrate_from_samples(
+                            accel_samples=accel_samples,
+                            gyro_samples=gyro_samples,
+                            madgwick_quaternion=madgwick_filters[channel].get_quaternion(),
+                            target_gravity=camera_gravity,
+                            safety_margin=SAFETY_MARGIN,
+                            logger=logger
+                        )
                         
-                        accel_variance = np.var(accel_magnitudes)
-                        
-                        # Set thresholds
-                        accel_threshold = (accel_mean + 3 * accel_std) * SAFETY_MARGIN
-                        gyro_threshold = (gyro_mean + 3 * gyro_std) * SAFETY_MARGIN
-                        variance_threshold = accel_variance * SAFETY_MARGIN
-                        
-                        # UPDATE the filter's thresholds
-                        dead_reckoning_filters[channel].ACCEL_STILL_THRESHOLD = accel_threshold
-                        dead_reckoning_filters[channel].GYRO_STILL_THRESHOLD = gyro_threshold
-                        dead_reckoning_filters[channel].ACCEL_VAR_THRESHOLD = variance_threshold
-                        
-                        # Log results
-                        logger.info(f"📊 IMU{channel} Calibrated Thresholds:")
-                        logger.info(f"   Accel: {accel_mean*1000:.2f}mg ± {accel_std*1000:.2f}mg → {accel_threshold*1000:.2f}mg")
-                        logger.info(f"   Gyro:  {np.degrees(gyro_mean):.2f}°/s ± {np.degrees(gyro_std):.2f}°/s → {np.degrees(gyro_threshold):.2f}°/s")
-                        logger.info(f"   Variance: {variance_threshold*1000:.4f}mg²")
+                        logger.info(f"✅ IMU{channel} calibration complete")
                         logger.info("")
                         
                         # Clean up
@@ -347,15 +510,17 @@ async def main(args):
                 control.process(imu_packet)
                 
                 # Assign blobs to fingers → update finger map
+                # Assign blobs to fingers → update finger map
                 if vp and vp.last_blob_centers:
-                    vp._assign_fingers(vp.last_blob_centers)   # if assign lives in VP
+                    vp._assign_fingers(vp.last_blob_centers)
+                    vp.update_finger_positions(vp.finger_positions)
 
                 # LETTER RECOGNITION
-                if vp and hasattr(vp, "finger_positions"):
-                    letter = recognizer.classify(vp.finger_positions)
+                if vp and vp.finger_positions:
+                    letter = recognizer.recognize(vp.finger_positions)
                     if letter:
-                        vp.current_letter = letter    
-                        print(f"\n🧠 RECOGNIZED LETTER: {letter}\n")
+                        vp.current_letter = letter
+                        print(f"\n🧠 LETTER DETECTED: {letter}\n")
                                 
                 # Update position tracker
                 if channel not in position_tracker['start_position']:
@@ -460,50 +625,34 @@ async def main(args):
         logger.info("✅ Pipeline stopped cleanly")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="ASL Glove IMU Data Pipeline with Position Correction",
-        formatter_class=argparse.RawDescriptionHelpFormatter
+    
+    mp.set_start_method('spawn', force=True)  # Cross-platform compatibility
+    
+    # BLE MODE: Platform-specific defaults
+    if platform.system() == 'Windows':
+        if args.no_plot is None:
+            args.no_plot = True  # No plot on Windows BLE
+        if args.record is None:
+            args.record = True  # Auto-record on Windows BLE
+    else:
+        # Linux/Mac BLE
+        if args.no_plot is None:
+            args.no_plot = False  # Plot on Linux/Mac
+        if args.record is None:
+            args.record = False  # Don't auto-record on Linux/Mac
+
+    # Handle override flags
+    if args.force_plot:
+        args.no_plot = False
+    if args.no_record:
+        args.record = False
+    
+    # Setup logging
+    log_level = logging.ERROR if args.quiet else (logging.DEBUG if args.debug else logging.INFO)
+    logging.basicConfig(
+        level=log_level,
+        format="%(asctime)-15s %(levelname)s: %(message)s"
     )
-    
-    # Mode Selection
-    parser.add_argument(
-        '--mode', '-m',
-        type=str,
-        default='corrected',  # Default to showing corrected position
-        choices=['all', 'debug', 'sensor', 'madgwick', 'position', 'corrected', 'compare', 'graph']
-    )
-    
-    parser.add_argument('graph_options', nargs='*')
-    
-    # PID parameters
-    parser.add_argument('--pid-kp', type=float, default=PID_KP, help='PID proportional gain')
-    parser.add_argument('--pid-ki', type=float, default=PID_KI, help='PID integral gain')
-    parser.add_argument('--pid-kd', type=float, default=PID_KD, help='PID derivative gain')
-    parser.add_argument('--px-per-mm', type=float, default=PIXEL_PER_MM, help='Pixels per MM')
-    
-    # Plot options
-    parser.add_argument('--no-plot', action='store_true', default=None)
-    parser.add_argument('--force-plot', action='store_true')
-    
-    # Recording
-    parser.add_argument('--record', '-r', action='store_true', default=None)
-    parser.add_argument('--no-record', action='store_true')
-    
-    # Vision (default enabled, can disable)
-    parser.add_argument('--no-vision', action='store_true', help='Disable vision processing (default: enabled)')
-    parser.add_argument('--vision', action='store_true', help='Enable vision processing (default: enabled)')  # For backwards compatibility
-    
-    # Other options
-    parser.add_argument('--output', '-o', type=str)
-    parser.add_argument('--update', '-u', type=int, default=20)
-    parser.add_argument('--max-points', type=int, default=200)
-    parser.add_argument('--playback', '-p', type=str)
-    parser.add_argument('--speed', '-s', type=float, default=1.0)
-    parser.add_argument('--fast', '-f', action='store_true')
-    parser.add_argument('--debug', '-d', action='store_true')
-    parser.add_argument('--quiet', '-q', action='store_true')
-    
-    args = parser.parse_args()
     
     # Vision defaults
     if args.no_vision:
@@ -534,13 +683,6 @@ if __name__ == "__main__":
     if args.no_record:
         args.record = False
     
-    # Setup logging
-    log_level = logging.ERROR if args.quiet else (logging.DEBUG if args.debug else logging.INFO)
-    logging.basicConfig(
-        level=log_level,
-        format="%(asctime)-15s %(levelname)s: %(message)s"
-    )
-    
     # Inform user
     logger.info(f"🎛️  PID enabled: Kp={args.pid_kp}, Ki={args.pid_ki}, Kd={args.pid_kd}, px_to_m={args.px_per_mm}")
     logger.info(f"📹 Vision: {'Enabled' if args.vision else 'Disabled (--no-vision)'}")
@@ -555,4 +697,5 @@ if __name__ == "__main__":
             else:
                 logger.warning("  • Plotting enabled (may cause BLE issues!)")
     
+    # Run main
     asyncio.run(main(args))

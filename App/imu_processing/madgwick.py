@@ -169,7 +169,7 @@ class MadgwickFilter:
         # Compute gradient (J^T * f) (EQ 34)
         grad_a = J_a.T @ f_a
         grad_m = J_m.T @ f_m
-        gradient = grad_a  #+ grad_m
+        gradient = grad_a  + grad_m
         gradient = gradient / np.linalg.norm(gradient)
         
 

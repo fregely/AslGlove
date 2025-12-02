@@ -23,7 +23,14 @@ CMD_NEXT  = bytes([2])
 
 class VisionProcessor:
     """ OpenCV vision processor synchronized with ESP32 LED flasher over BLE."""
-    def __init__(self, client, record: bool = False, thresh: int = 240, min_area: int =300, max_area: int =10000, min_circ: float =0.6, pixel_per_mm: float =1.0):
+    def __init__(self, client, 
+                 record: bool = False, 
+                 thresh: int = 240, 
+                 min_area: int =300, 
+                 max_area: int =10000, 
+                 min_circ: float =0.6, 
+                 pixel_per_mm: float =1.0,
+                 calibration_mode: bool = False) -> None:
         self.client = client
         self.current_led = -1
         self.ready_flag = False
@@ -38,6 +45,7 @@ class VisionProcessor:
         self.last_blob_centers = []
         self.last_timestamp = None
         self.last_packet = {}
+        self.calibration_mode = calibration_mode
         
         # LED → IMU offset (approx 7 mm above IMU)
         # PX_PER_MM should be calibrated; 1.0 is a reasonable starting point.
@@ -52,7 +60,38 @@ class VisionProcessor:
         self.csv_writer = None
         
         self.finger_positions = {}  # most recent finger→(x,y) mapping
-        self.current_letter = None  # store last recognized letter
+        self.current_letter: str | None = None  # store last recognized letter
+        self.tracked_fingers = {}   # finger→(x,y) for smoothing
+        self.led_index_to_finger = None
+        self.cancelled = False  # flag to stop processing cleanly
+        
+        # Try to load finger map if it exists
+        self.load_finger_map("finger_map.json")
+    
+    def load_finger_map(self, filename="finger_map.json"):
+        """Load LED-to-finger mapping from calibration file."""
+        try:
+            import json
+            with open(filename, 'r') as f:
+                data = json.load(f)
+            # Create mapping: LED GPIO -> finger name
+            gpio_to_finger = {int(gpio): info["finger"] for gpio, info in data.items()}
+            
+            # Also create index-based mapping (0-4) for normal operation
+            # The order matches the LED GPIO order: [1, 3, 20, 7, 6]
+            led_gpio_order = [1, 3, 20, 7, 6]
+            index_to_finger = {}
+            for idx, gpio in enumerate(led_gpio_order):
+                if gpio in gpio_to_finger:
+                    index_to_finger[idx] = gpio_to_finger[gpio]
+            
+            # Combine both mappings
+            self.led_index_to_finger = {**gpio_to_finger, **index_to_finger}
+            print(f"📋 Loaded finger map: GPIOs={gpio_to_finger}, Indices={index_to_finger}")
+        except FileNotFoundError:
+            print(f"⚠️ Finger map file {filename} not found - run calibration first")
+        except Exception as e:
+            print(f"⚠️ Error loading finger map: {e}")
 
     def handler(self, _ch, data: bytearray):
         """BLE callback: ESP32 says 'ready—capture next frame'"""
@@ -63,15 +102,25 @@ class VisionProcessor:
     async def start(self):
         """Start vision + LED sync."""
         print("📹 Starting OpenCV vision processor...")
+        self.cancelled = False
 
         # Small delay to ensure BLE subscriptions are stable
         await asyncio.sleep(0.2)
 
-        # Tell ESP32 to begin LED loop 
-        await self.client.write_gatt_char(LED_WRITE_UUID, CMD_START)
+        # Tell ESP32 to begin LED loop
+        if not self.cancelled:
+            try:
+                print("📡 Sending CMD_START to begin LED cycling...")
+                await self.client.write_gatt_char(LED_WRITE_UUID, CMD_START)
+                print("✅ LED cycling started")
+            except Exception as e:
+                print(f"⚠️ Failed to start LED sync: {e}")
+                print("   Vision processor will continue but LED sync may not work")
+                # Don't return - continue anyway for debugging
+                pass
 
         # Setup camera
-        cap = cv2.VideoCapture(2)
+        cap = cv2.VideoCapture(0)
         cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG')) # type: ignore[attr-defined]
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
@@ -215,6 +264,10 @@ class VisionProcessor:
                 "num_blobs": len(blob_centers),
             }
             
+            # Automatically assign fingers from detected blobs
+            if blob_centers:
+                self._assign_fingers(blob_centers)
+            
             # ---------- FPS ----------
             now = time.time()
             fps = 1/(now-prev)
@@ -240,11 +293,17 @@ class VisionProcessor:
             cv2.imshow("ASL Vision", frame)
 
             # Let ESP32 advance to next LED
-            await self.client.write_gatt_char(LED_WRITE_UUID, CMD_NEXT)
+            if not self.cancelled:
+                try:
+                    await self.client.write_gatt_char(LED_WRITE_UUID, CMD_NEXT)
+                except Exception:
+                    # BLE connection lost or task cancelled
+                    break
 
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
 
+        self.cancelled = True
         cap.release()
         cv2.destroyAllWindows()
         
@@ -281,8 +340,9 @@ class VisionProcessor:
         # We expect exactly 1 blob because only one LED is on
         cx, cy = blob_centers[0]
 
-        # Build LED index → finger map (only once)
-        if not hasattr(self, "led_index_to_finger"):
+       # Build index → finger map (once)
+        # LED→finger mapping
+        if self.led_index_to_finger is None:
             led_order = [1, 3, 20, 7, 6]
             finger_order = ["thumb", "index", "middle", "ring", "pinky"]
             self.led_index_to_finger = {
@@ -290,10 +350,12 @@ class VisionProcessor:
                 for i in range(len(led_order))
             }
 
+
         # Get finger for this LED frame
         finger = self.led_index_to_finger.get(self.current_led)
 
         if finger is None:
+            print(f"⚠️ Unknown LED index {self.current_led}, not in mapping {self.led_index_to_finger}")
             return self.finger_positions
 
         # Smooth motion
@@ -310,6 +372,20 @@ class VisionProcessor:
 
         # Update finger position
         self.tracked_fingers[finger] = smoothed
-        self.finger_positions[finger] = smoothed
-
+        sx, sy = smoothed
+        
+        # Debug: Show when a new finger is added
+        if finger not in self.finger_positions:
+            print(f"✓ Assigned {finger} from LED {self.current_led}")
+        
+        self.finger_positions[finger] = (sx, sy, 0.0)
+        
         return self.finger_positions
+    
+    
+    def set_open_hand_baseline(self, table):
+        """
+        Save normalized fingertip separation distances
+        from open-hand calibration.
+        """
+        self.open_calibration = table
