@@ -376,7 +376,10 @@ async def main(args):
                 imu_packet = madgwick_filters[channel].process(imu_packet)
                 position_tracker['warmup'][channel] += 1
 
+<<<<<<< HEAD
                 # Calculate and apply calibration when warmup complete
+=======
+>>>>>>> main
                 if position_tracker['warmup'][channel] <= MADGWICK_WARMUP_PACKETS:
                     # Collect calibration data during warmup
                     accel = imu_packet['accel']

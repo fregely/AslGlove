@@ -1,5 +1,54 @@
-# ASL Glove Project  
+# ASL Glove Project -- Environment Setup Guide :)
+This guide walks you through setting up the Python development environment for the ASL Glove project. It uses a virtual environment to isolate dependencies like OpenCV and ensure everything runs consistently across machines.
 
+Requirements
+	•	Python 3.9 or higher (recommended)
+	•	Git
+	•	VS Code (recommended)
+	•	macOS or Linux (Windows should work but steps may differ slightly)
+
+ 1. Clone the Repository
+    ```bash
+    git clone <your-repo-url>
+    cd AslGlove
+    ```
+ 2. Create and Activate the Virtual Envrionment
+    ```bash
+    python3 -m venv .venv
+    source .venv/bin/activate
+    ```
+    You should see (.venv) at the beginning of your terminal prompt when activated.
+ 3. Install Project Dependencies
+    ```bash
+    pip install -r requirements.txt
+    ```
+    If you don't see requirements.txt, you can manually install:
+    ```bash
+    pip install opencv-python numpy
+    ```
+ 4. VS Code Setup
+    If you're using VS Code:
+    	•	Press Cmd+Shift+P (or Ctrl+Shift+P on Windows)
+    	•	Select Python: Select Interpreter
+    	•	Choose the one that says .venv
+
+5. Commands to souce IDF:
+   ```bash
+   # 1) Go to your esp-idf install directory
+	cd ~/esp/esp-idf
+	
+	# 2) Activate ESP-IDF environment (for zsh)
+	source export.sh    # or: . export.sh
+	
+	# 3) Go back to your project
+	cd /Users/camilleferrell/Desktop/AslGlove/MCU
+	
+	# 4) Now this should work:
+	idf.py build flash monitor
+	```
+    Now you can run scripts directly with the Run ▶️ button or F5.
+
+---
 openCV blob detection guide 
 https://opencv.org/blog/blob-detection-using-opencv/
 ^ gives both python and C++, I (david) would prefer to use C++ just to keep all the programs 
@@ -103,50 +152,4 @@ git checkout -- <filename>
 ```
 --- 
 
-flashing 
-get_idf
-idf.py set-target esp32c3
-idf.py fullclean
-idf.py build //dont really need
-idf.py -p /dev/ttyUSB0 flash monitor
-idf.py -p /dev/ttyUSB0 monitor
 
-
-## Setting up Rtos Environment TODO
-https://docs.espressif.com/projects/esp-idf/en/latest/esp32/get-started/linux-macos-setup.html
-get_idf - once you have it in that one file that is for sourcing
-idf.py set-target esp32c3 #need to install this keychain seperately
-https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32c3/esp32-c3-devkitm-1/user_guide.html
-ls -l /dev/ttyUSB*
-lsusb  -- for usb 
-https://www.espressif.com/sites/default/files/documentation/esp32-c3_datasheet_en.pdf
-
-Reading from bluetooth gatt 
-
-bluetoothctl
-connect 18:8B:0E:AE:BF:CE
-menu gatt
-list-attributes
-
-look for the service
-/service0028/char0029
-c4e7a180-7b2f-4c95-bfc5-1d5c62123456 - for imu data 
-
-select-attribute /org/bluez/hci0/dev_18_8B_0E_B0_7B_B6/service000e/char000f
-notify on
-
-https://www.freertos.org/Documentation/01-FreeRTOS-quick-start/01-Beginners-guide/00-Overview
-
-
-source venv/bin/activate
-
-# Play at normal speed
-python main.py --playback my_data.imu
-
-# Play at 2x speed
-python main.py --playback my_data.imu --playback-speed 2.0
-
-# Play as fast as possible (no delays)
-python main.py --playback my_data.imu --playback-speed 0
-
-python main.py --record test_data.imu

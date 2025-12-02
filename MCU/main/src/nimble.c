@@ -75,7 +75,6 @@ static void ble_data_task(void *param) {
     while (1) {
         // Wait for data from the IMU task (block indefinitely)
         if (xQueueReceive(imu_data_queue, &packet, portMAX_DELAY) == pdTRUE) {
-            
             // Send the packet via BLE
             rc = gatt_send_notification((const uint8_t *)&packet, sizeof(packet));
             
@@ -116,6 +115,8 @@ void start_ble_task(void) {
     /* Local variables */
     int rc;
     esp_err_t ret;
+
+    esp_log_level_set("NimBLE", ESP_LOG_WARN);
     /*
      * NVS flash initialization
      * Dependency of BLE stack to store configurations
@@ -158,7 +159,7 @@ void start_ble_task(void) {
 
     /* Start NimBLE host task thread and return */
     xTaskCreate(nimble_host_task, "NimBLE Host", 4*1024, NULL, 5, NULL);
-    xTaskCreate(ble_data_task, "BLE Sender", 3072, NULL, 4, NULL);
+    xTaskCreate(ble_data_task, "BLE Sender", 3072, NULL, 6, NULL);
     return;
 }
 
