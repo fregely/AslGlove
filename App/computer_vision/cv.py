@@ -49,7 +49,7 @@ class VisionProcessor:
         
         # LED → IMU offset (approx 7 mm above IMU)
         # PX_PER_MM should be calibrated; 1.0 is a reasonable starting point.
-        self.LED_OFFSET_MM = 7.0
+        self.LED_OFFSET_MM = 0.0
         self.PX_PER_MM = pixel_per_mm # TODO: measure mm→px scale and update this
         # Image coords: y increases downward, so to move LED "down" toward IMU,
         # we add a positive dy.

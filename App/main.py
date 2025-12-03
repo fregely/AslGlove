@@ -296,7 +296,9 @@ async def main(args):
         }),
         # ZUPT stationary tracking for letter recognition
         'stationary_states': {},  # {channel: is_stationary}
-        'stationary_confidence': {}  # {channel: confidence}
+        'stationary_confidence': {},  # {channel: confidence}
+        # IMU-based finger positions (corrected by PID)
+        'imu_finger_positions': {}  # {finger_name: (x, y, z)}
     }   
     
     def log_position_data(state):
@@ -519,14 +521,36 @@ async def main(args):
                     position_tracker['stationary_states'][channel] = zupt_info.get('active', False)
                     position_tracker['stationary_confidence'][channel] = zupt_info.get('confidence', 0.0)
                 
-                # Assign blobs to fingers → update finger map
+                # Store corrected IMU positions mapped to finger names
+                # Note: Only X and Y are PID-corrected; Z has accumulated drift, so we ignore it
+                if 'corrected_position' in imu_packet and channel in control.imu_to_finger:
+                    finger_name = control.imu_to_finger[channel]
+                    corrected_x, corrected_y, _ = imu_packet['corrected_position']
+                    # Store as 2D position (ignore uncorrected Z-axis)
+                    position_tracker['imu_finger_positions'][finger_name] = (corrected_x, corrected_y, 0.0)
+                
                 # Assign blobs to fingers → update finger map
                 if vp and vp.last_blob_centers:
                     vp._assign_fingers(vp.last_blob_centers)
                     vp.update_finger_positions(vp.finger_positions)
 
-                # LETTER RECOGNITION with ZUPT stability check
+                # LETTER RECOGNITION - Use hybrid approach: IMU positions (PID-corrected) + Vision fallback
+                # Prefer IMU-based positions as they include Z-axis and are drift-corrected
+                finger_positions_for_recognition = {}
+                
+                # Priority 1: Use IMU corrected positions (3D with PID feedback)
+                if position_tracker['imu_finger_positions']:
+                    finger_positions_for_recognition = position_tracker['imu_finger_positions'].copy()
+                
+                # Priority 2: Fallback to vision positions for any missing fingers (2D, converted to 3D)
                 if vp and vp.finger_positions:
+                    for finger_name, pos_2d in vp.finger_positions.items():
+                        if finger_name not in finger_positions_for_recognition:
+                            # Convert 2D vision position to 3D (assume z=0 for vision-only data)
+                            finger_positions_for_recognition[finger_name] = (pos_2d[0], pos_2d[1], 0.0)
+                
+                # Only attempt recognition if we have finger position data
+                if finger_positions_for_recognition:
                     # Determine overall hand stability from all IMUs
                     # Hand is stable only if MAJORITY of IMUs report stationary
                     stationary_states = list(position_tracker['stationary_states'].values())
@@ -547,15 +571,21 @@ async def main(args):
                         is_hand_stable = None
                         avg_confidence = 0.0
                     
+                    # Count how many fingers are from IMU vs vision
+                    imu_fingers = len(position_tracker['imu_finger_positions'])
+                    total_fingers = len(finger_positions_for_recognition)
+                    
                     letter = recognizer.recognize(
-                        vp.finger_positions,
+                        finger_positions_for_recognition,
                         is_stationary=is_hand_stable,
                         stationary_confidence=avg_confidence
                     )
                     if letter:
-                        vp.current_letter = letter
+                        if vp:
+                            vp.current_letter = letter
                         stability_indicator = "🟢" if is_hand_stable and avg_confidence > 0.8 else "🟡"
-                        print(f"\n{stability_indicator} LETTER DETECTED: {letter} (stability: {avg_confidence:.1%})\n")
+                        source_indicator = "📡" if imu_fingers == total_fingers else "🔀"  # 📡=all IMU, 🔀=hybrid
+                        print(f"\n{stability_indicator}{source_indicator} LETTER: {letter} (stability: {avg_confidence:.1%}, IMU: {imu_fingers}/{total_fingers})\n")
                                 
                 # Update position tracker
                 if channel not in position_tracker['start_position']:
