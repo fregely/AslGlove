@@ -78,6 +78,7 @@ from imu_processing.control import Control
 
 control = Control()
 recognizer = LetterRecognizer2()
+recognizer.debug_mode = True
 
 # Try to load existing calibration data
 recognizer.load_calibration()
@@ -292,7 +293,10 @@ async def main(args):
         'calibration_data': defaultdict(lambda: {
             'accel_samples': [],
             'gyro_samples': []
-        })
+        }),
+        # ZUPT stationary tracking for letter recognition
+        'stationary_states': {},  # {channel: is_stationary}
+        'stationary_confidence': {}  # {channel: confidence}
     }   
     
     def log_position_data(state):
@@ -509,18 +513,49 @@ async def main(args):
                 # Apply position correction using Control
                 control.process(imu_packet)
                 
+                # Track stationary state from ZUPT for letter recognition
+                if 'zupt_info' in imu_packet:
+                    zupt_info = imu_packet['zupt_info']
+                    position_tracker['stationary_states'][channel] = zupt_info.get('active', False)
+                    position_tracker['stationary_confidence'][channel] = zupt_info.get('confidence', 0.0)
+                
                 # Assign blobs to fingers → update finger map
                 # Assign blobs to fingers → update finger map
                 if vp and vp.last_blob_centers:
                     vp._assign_fingers(vp.last_blob_centers)
                     vp.update_finger_positions(vp.finger_positions)
 
-                # LETTER RECOGNITION
+                # LETTER RECOGNITION with ZUPT stability check
                 if vp and vp.finger_positions:
-                    letter = recognizer.recognize(vp.finger_positions)
+                    # Determine overall hand stability from all IMUs
+                    # Hand is stable only if MAJORITY of IMUs report stationary
+                    stationary_states = list(position_tracker['stationary_states'].values())
+                    confidence_scores = list(position_tracker['stationary_confidence'].values())
+                    
+                    if stationary_states:
+                        # Count how many IMUs are stationary
+                        num_stationary = sum(stationary_states)
+                        total_imus = len(stationary_states)
+                        
+                        # Hand is stable if >50% of IMUs are stationary
+                        is_hand_stable = num_stationary > (total_imus / 2)
+                        
+                        # Average confidence across all IMUs
+                        avg_confidence = sum(confidence_scores) / len(confidence_scores) if confidence_scores else 0.0
+                    else:
+                        # No ZUPT data yet - allow recognition (backward compatible)
+                        is_hand_stable = None
+                        avg_confidence = 0.0
+                    
+                    letter = recognizer.recognize(
+                        vp.finger_positions,
+                        is_stationary=is_hand_stable,
+                        stationary_confidence=avg_confidence
+                    )
                     if letter:
                         vp.current_letter = letter
-                        print(f"\n🧠 LETTER DETECTED: {letter}\n")
+                        stability_indicator = "🟢" if is_hand_stable and avg_confidence > 0.8 else "🟡"
+                        print(f"\n{stability_indicator} LETTER DETECTED: {letter} (stability: {avg_confidence:.1%})\n")
                                 
                 # Update position tracker
                 if channel not in position_tracker['start_position']:

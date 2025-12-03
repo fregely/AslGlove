@@ -8,6 +8,7 @@ import json
 import asyncio
 
 class LetterRecognizer2:
+    """ ASL Letter Recognizer using fingertip positions and open-hand calibration."""
 
     def __init__(self):
         # Stores normalized distance baselines for open hand
@@ -23,6 +24,10 @@ class LetterRecognizer2:
         # Debouncing - prevent rapid letter changes
         self.frames_since_change = 0
         self.min_frames_between_changes = 3  # Require 3 stable frames before new letter
+        
+        # Debug mode - prints raw detections before temporal filtering
+        self.debug_mode = False
+        self.debug_counter = 0
 
     # -------------------------------
     # Helper: Euclidean distance
@@ -252,12 +257,15 @@ class LetterRecognizer2:
     
     
     # ------------------------------------------
-    # Letter rules
+    # Letter rules - REORGANIZED BY SPECIFICITY
+    # Most specific/unique patterns first, general patterns last
     # ------------------------------------------
     def letter_from_states(self, states, packet):
         """
         Matches finger states and distances to ASL letters.
         Returns the detected letter or None.
+        
+        Letters are checked in order of specificity to avoid conflicts.
         """
         
         # Get normalized distances for additional checks
@@ -268,152 +276,173 @@ class LetterRecognizer2:
             return None
         
         # ===========================================
-        # EXACT STATE MATCHES (simple letters)
+        # PRIORITY 1: MOST UNIQUE PATTERNS
         # ===========================================
         
-        # A: All fingers curled into fist, thumb alongside
-        if (states["index"] == "curled" and states["middle"] == "curled" and 
-            states["ring"] == "curled" and states["pinky"] == "curled"):
-            return "A"
+        # O: All fingers touch thumb making circle (very distinctive)
+        if all(n[("thumb", f)] < 0.35 for f in ["index", "middle", "ring", "pinky"]):
+            return "O"
         
         # B: All 4 fingers extended, thumb curled across palm
         if (states["index"] == "extended" and states["middle"] == "extended" and
             states["ring"] == "extended" and states["pinky"] == "extended" and
-            states["thumb"] == "curled"):
+            states["thumb"] in ["curled", "closed"]):
             return "B"
         
         # I: Only pinky extended (others curled)
-        if (states["pinky"] == "extended" and states["index"] == "curled" and
-            states["middle"] == "curled" and states["ring"] == "curled"):
+        if (states["pinky"] == "extended" and 
+            states["index"] in ["curled", "closed"] and
+            states["middle"] in ["curled", "closed"] and
+            states["ring"] in ["curled", "closed"]):
             return "I"
-        
-        # L: Thumb and index extended, others curled
-        if (states["thumb"] == "extended" and states["index"] == "extended" and
-            states["middle"] == "curled" and states["ring"] == "curled" and
-            states["pinky"] == "curled"):
-            return "L"
         
         # Y: Thumb and pinky extended, others curled
         if (states["pinky"] == "extended" and states["thumb"] == "extended" and
-            states["index"] == "curled" and states["middle"] == "curled" and
-            states["ring"] == "curled"):
+            states["index"] in ["curled", "closed"] and
+            states["middle"] in ["curled", "closed"] and
+            states["ring"] in ["curled", "closed"]):
             return "Y"
         
         # ===========================================
-        # LETTERS REQUIRING DISTANCE CHECKS
+        # PRIORITY 2: THREE-FINGER PATTERNS
         # ===========================================
-        
-        # C: Curved hand shape (all fingers slightly curled in C shape)
-        if all(states[f] in ["semi", "curled"] for f in ["index", "middle", "ring", "pinky"]):
-            if 0.55 < n[("thumb", "index")] < 0.80:
-                return "C"
-        
-        # D: Index extended, others curled, thumb touches middle finger
-        if (states["index"] == "extended" and states["middle"] == "curled" and
-            states["ring"] == "curled" and states["pinky"] == "curled"):
-            if n[("thumb", "middle")] < 0.3:  # Thumb touching middle
-                return "D"
-        
-        # E: All fingers tightly curled, thumb across fingernails
-        if all(states[f] == "curled" for f in ["index", "middle", "ring", "pinky"]):
-            if n[("thumb", "index")] < 0.25:
-                return "E"
-        
-        # F: Index and thumb make circle, other 3 fingers extended
-        if (states["middle"] == "extended" and states["ring"] == "extended" and
-            states["pinky"] == "extended" and
-            states["index"] in ["curled", "closed", "semi"]):
-            if n[("thumb", "index")] < 0.35:  # Thumb and index touching
-                return "F"
-        
-        # G: Index and thumb extended sideways, others curled
-        if (states["index"] == "extended" and states["middle"] == "curled" and
-            states["ring"] == "curled" and states["pinky"] == "curled"):
-            if n[("thumb", "index")] > 0.6:  # Thumb and index apart
-                return "G"
-        
-        # H: Index and middle extended sideways, others curled
-        if (states["index"] == "extended" and states["middle"] == "extended" and
-            states["ring"] == "curled" and states["pinky"] == "curled"):
-            if n[("index", "middle")] < 0.3:  # Fingers together
-                return "H"
-        
-        # M: Thumb under 3 curled fingers
-        if (states["index"] == "curled" and states["middle"] == "curled" and
-            states["ring"] == "curled" and states["pinky"] == "curled"):
-            if n[("thumb", "pinky")] < 0.35:
-                return "M"
-        
-        # N: Thumb under 2 curled fingers (index and middle)
-        if (states["index"] == "curled" and states["middle"] == "curled" and
-            states["ring"] == "curled" and states["pinky"] == "curled"):
-            if 0.35 < n[("thumb", "ring")] < 0.6:
-                return "N"
-        
-        # O: All fingers touch thumb making circle
-        if all(n[("thumb", f)] < 0.40 for f in ["index", "middle", "ring", "pinky"]):
-            return "O"
-        
-        # P: Index pointing down, middle extended, thumb between them
-        if (states["index"] == "extended" and states["middle"] == "extended" and
-            states["ring"] == "curled" and states["pinky"] == "curled"):
-            if n[("thumb", "index")] < 0.4:
-                return "P"
-        
-        # Q: Thumb and index pointing down
-        if (states["thumb"] == "extended" and states["index"] == "extended" and
-            states["middle"] == "curled" and states["ring"] == "curled" and
-            states["pinky"] == "curled"):
-            if n[("thumb", "index")] < 0.4:
-                return "Q"
-        
-        # R: Index and middle crossed, others curled
-        if (states["index"] == "extended" and states["middle"] == "extended" and
-            states["ring"] == "curled" and states["pinky"] == "curled"):
-            if n[("index", "middle")] < 0.4:  # Fingers crossed/close
-                return "R"
-        
-        # S: Fist with thumb across front
-        if all(states[f] == "curled" for f in ["index", "middle", "ring", "pinky"]):
-            if 0.3 < n[("thumb", "index")] < 0.5:
-                return "S"
-        
-        # T: Thumb between index and middle
-        if (states["index"] == "curled" and states["middle"] == "curled" and
-            states["ring"] == "curled" and states["pinky"] == "curled"):
-            if n[("thumb", "index")] < 0.25 and n[("thumb", "middle")] < 0.35:
-                return "T"
-        
-        # U: Index and middle extended together, others curled
-        if (states["index"] == "extended" and states["middle"] == "extended" and
-            states["ring"] == "curled" and states["pinky"] == "curled"):
-            if n[("index", "middle")] < 0.5:  # Fingers together
-                return "U"
-        
-        # V: Index and middle extended apart, others curled
-        if (states["index"] == "extended" and states["middle"] == "extended" and
-            states["ring"] == "curled" and states["pinky"] == "curled"):
-            if n[("index", "middle")] > 0.5:  # Fingers apart
-                return "V"
         
         # W: Three fingers (index, middle, ring) extended, pinky curled
         if (states["index"] == "extended" and states["middle"] == "extended" and
             states["ring"] == "extended" and states["pinky"] in ["curled", "closed"]):
-            # Additional check: ensure fingers are reasonably spread
-            if n[("index", "ring")] > 0.40:
+            # Ensure fingers are spread (not U shape)
+            if n[("index", "ring")] > 0.35:
                 return "W"
         
-        # X: Index finger bent/hooked, others curled
-        if (states["index"] == "semi" and states["middle"] == "curled" and
-            states["ring"] == "curled" and states["pinky"] == "curled"):
-            return "X"
+        # F: Index and thumb make circle, other 3 fingers extended
+        if (states["middle"] == "extended" and states["ring"] == "extended" and
+            states["pinky"] == "extended" and
+            states["index"] in ["curled", "closed"]):
+            if n[("thumb", "index")] < 0.30:  # Thumb and index touching
+                return "F"
+        
+        # ===========================================
+        # PRIORITY 3: TWO-FINGER PATTERNS (CHECK SPACING)
+        # ===========================================
+        
+        # V: Index and middle extended APART, others curled
+        if (states["index"] == "extended" and states["middle"] == "extended" and
+            states["ring"] in ["curled", "closed"] and states["pinky"] in ["curled", "closed"]):
+            if n[("index", "middle")] > 0.55:  # Wide spacing = V
+                return "V"
+        
+        # R: Index and middle crossed/very close, others curled
+        if (states["index"] == "extended" and states["middle"] == "extended" and
+            states["ring"] in ["curled", "closed"] and states["pinky"] in ["curled", "closed"]):
+            if n[("index", "middle")] < 0.35:  # Crossed/close = R
+                return "R"
+        
+        # U: Index and middle extended together (medium spacing), others curled
+        if (states["index"] == "extended" and states["middle"] == "extended" and
+            states["ring"] in ["curled", "closed"] and states["pinky"] in ["curled", "closed"]):
+            if 0.35 <= n[("index", "middle")] <= 0.55:  # Medium spacing = U
+                return "U"
         
         # K: Index and middle extended in V, thumb between them
         if (states["index"] == "extended" and states["middle"] == "extended" and
-            states["ring"] == "curled" and states["pinky"] == "curled"):
-            if (n[("thumb", "index")] < n[("index", "middle")] and
-                n[("thumb", "middle")] < n[("index", "middle")]):
+            states["ring"] in ["curled", "closed"] and states["pinky"] in ["curled", "closed"]):
+            if (n[("thumb", "index")] < 0.45 and n[("thumb", "middle")] < 0.45 and
+                n[("index", "middle")] > 0.40):
                 return "K"
+        
+        # H: Index and middle extended sideways very close, others curled
+        if (states["index"] == "extended" and states["middle"] == "extended" and
+            states["ring"] in ["curled", "closed"] and states["pinky"] in ["curled", "closed"]):
+            if n[("index", "middle")] < 0.25:  # Very tight = H
+                return "H"
+        
+        # P: Index pointing down, middle extended, thumb between them
+        if (states["index"] == "extended" and states["middle"] == "extended" and
+            states["ring"] in ["curled", "closed"] and states["pinky"] in ["curled", "closed"]):
+            if n[("thumb", "index")] < 0.35 and n[("thumb", "middle")] > 0.40:
+                return "P"
+        
+        # ===========================================
+        # PRIORITY 4: ONE FINGER + THUMB PATTERNS
+        # ===========================================
+        
+        # L: Thumb and index extended at right angle, others curled
+        if (states["thumb"] == "extended" and states["index"] == "extended" and
+            states["middle"] in ["curled", "closed"] and
+            states["ring"] in ["curled", "closed"] and
+            states["pinky"] in ["curled", "closed"]):
+            if n[("thumb", "index")] > 0.65:  # Wide angle
+                return "L"
+        
+        # D: Index extended, others curled, thumb touches middle finger
+        if (states["index"] == "extended" and 
+            states["middle"] in ["curled", "closed"] and
+            states["ring"] in ["curled", "closed"] and 
+            states["pinky"] in ["curled", "closed"]):
+            if n[("thumb", "middle")] < 0.30:  # Thumb touching middle
+                return "D"
+        
+        # G: Index extended sideways, thumb extended, others curled
+        if (states["index"] == "extended" and 
+            states["middle"] in ["curled", "closed"] and
+            states["ring"] in ["curled", "closed"] and 
+            states["pinky"] in ["curled", "closed"]):
+            if states["thumb"] == "extended" and n[("thumb", "index")] > 0.55:
+                return "G"
+        
+        # Q: Thumb and index pointing down
+        if (states["thumb"] == "extended" and states["index"] == "extended" and
+            states["middle"] in ["curled", "closed"] and 
+            states["ring"] in ["curled", "closed"] and
+            states["pinky"] in ["curled", "closed"]):
+            if n[("thumb", "index")] < 0.45:
+                return "Q"
+        
+        # ===========================================
+        # PRIORITY 5: CLOSED FIST VARIATIONS
+        # ===========================================
+        
+        # C: Curved hand shape (all fingers slightly curled in C shape)
+        if all(states[f] in ["semi", "curled"] for f in ["index", "middle", "ring", "pinky"]):
+            if 0.50 < n[("thumb", "index")] < 0.75:
+                return "C"
+        
+        # E: All fingers tightly curled, thumb across fingernails
+        if all(states[f] in ["curled", "closed"] for f in ["index", "middle", "ring", "pinky"]):
+            if n[("thumb", "index")] < 0.20:  # Very tight
+                return "E"
+        
+        # A: All fingers curled into fist, thumb alongside (looser than E)
+        if all(states[f] in ["curled", "closed"] for f in ["index", "middle", "ring", "pinky"]):
+            if 0.25 < n[("thumb", "index")] < 0.45:
+                return "A"
+        
+        # S: Fist with thumb across front (between A and E)
+        if all(states[f] in ["curled", "closed"] for f in ["index", "middle", "ring", "pinky"]):
+            if 0.20 <= n[("thumb", "index")] <= 0.30:
+                return "S"
+        
+        # M: Thumb under 3 curled fingers (very specific thumb position)
+        if all(states[f] in ["curled", "closed"] for f in ["index", "middle", "ring", "pinky"]):
+            if n[("thumb", "pinky")] < 0.30 and n[("thumb", "index")] < 0.40:
+                return "M"
+        
+        # N: Thumb under 2 curled fingers (index and middle)
+        if all(states[f] in ["curled", "closed"] for f in ["index", "middle", "ring", "pinky"]):
+            if n[("thumb", "middle")] < 0.30 and n[("thumb", "ring")] > 0.35:
+                return "N"
+        
+        # T: Thumb between index and middle (very specific)
+        if all(states[f] in ["curled", "closed"] for f in ["index", "middle", "ring", "pinky"]):
+            if n[("thumb", "index")] < 0.20 and 0.25 < n[("thumb", "middle")] < 0.40:
+                return "T"
+        
+        # X: Index finger bent/hooked, others curled
+        if (states["index"] == "semi" and 
+            states["middle"] in ["curled", "closed"] and
+            states["ring"] in ["curled", "closed"] and 
+            states["pinky"] in ["curled", "closed"]):
+            return "X"
         
         # No match found
         return None
@@ -422,15 +451,38 @@ class LetterRecognizer2:
     # Main entry with temporal filtering
     # (packet: fingertip 3D positions)
     # ------------------------------------------
-    def recognize(self, packet):
+    def recognize(self, packet, is_stationary=None, stationary_confidence=0.0):
+        """
+        Recognize ASL letter from finger positions.
+        
+        Args:
+            packet: Finger positions dict {finger: (x,y,z)}
+            is_stationary: Boolean indicating if hand is stationary (from ZUPT)
+            stationary_confidence: Confidence score 0-1 for stationary state
+        """
         states = self.classify_finger_states(packet)
         
         # Skip recognition if no calibration data
         if states is None:
             return None
             
+        # ZUPT INTEGRATION: Only recognize when hand is stationary
+        # This dramatically reduces false positives from drift
+        if is_stationary is False:
+            # Hand is moving - don't attempt recognition
+            self.letter_history.append(None)
+            if len(self.letter_history) > self.history_size:
+                self.letter_history.pop(0)
+            return None
+        
         # Get raw detection for this frame
         raw_letter = self.letter_from_states(states, packet)
+        
+        # Debug mode: print raw detections with stationary state
+        if self.debug_mode and self.debug_counter < 100:
+            self.debug_counter += 1
+            stationary_str = "STABLE" if is_stationary else "MOVING" if is_stationary is False else "UNKNOWN"
+            print(f"[RAW {self.debug_counter}] {stationary_str}(conf={stationary_confidence:.2f}) Letter={raw_letter}, States={states}")
         
         # Add to history (use None if no detection)
         self.letter_history.append(raw_letter)
@@ -454,8 +506,16 @@ class LetterRecognizer2:
         best_letter = max(letter_counts, key=letter_counts.get)
         best_count = letter_counts[best_letter]
         
-        # Require minimum confidence (e.g., 3 out of 5 frames)
-        if best_count < self.min_confidence:
+        # Adaptive confidence threshold based on stationary state
+        # When very stable (high ZUPT confidence), we can be more lenient
+        # When transitioning or uncertain, require more agreement
+        required_confidence = self.min_confidence
+        if stationary_confidence is not None and stationary_confidence < 0.8:
+            # Lower confidence in stationary state - require more frames
+            required_confidence = min(self.history_size, self.min_confidence + 1)
+        
+        # Require minimum confidence
+        if best_count < required_confidence:
             return None
         
         # Apply debouncing - prevent rapid changes
