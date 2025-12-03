@@ -38,7 +38,7 @@ class Control:
         # Time tracking for IMU
         self.imu_time: Dict[int, float] = {}
         self.imu_start_time: Dict[int, float] = {}
-        self.imu_start_time = {}
+        self.initial_offset_applied: Dict[int, bool] = {}  # Track if initial offset was set
         
         # Pixel to meter conversion (calibrate this!)
         self.px_to_m = 0.001  # 1000 pixels = 1 meter
@@ -198,7 +198,7 @@ class Control:
             
             # On first position packet for this channel, calculate initial offset
             # to align IMU starting position with calibrated CV position
-            if channel in self.imu_to_finger and channel not in self.imu_start_time:
+            if channel in self.imu_to_finger and not self.initial_offset_applied.get(channel, False):
                 finger_name = self.imu_to_finger[channel]
                 if finger_name in self.initial_led_positions:
                     # Calculate offset needed to place IMU at CV calibrated position
@@ -206,7 +206,8 @@ class Control:
                     initial_offset_x = cv_x - imu_x
                     initial_offset_y = cv_y - imu_y
                     self.correction_offset[channel] = (initial_offset_x, initial_offset_y)
-                    print(f"[CONTROL] Set initial offset for ch{channel} ({finger_name}): ({initial_offset_x:.3f}, {initial_offset_y:.3f})m")
+                    self.initial_offset_applied[channel] = True
+                    print(f"[CONTROL] Set initial offset for ch{channel} ({finger_name}): IMU({imu_x:.3f},{imu_y:.3f}) -> CV({cv_x:.3f},{cv_y:.3f}) offset=({initial_offset_x:.3f},{initial_offset_y:.3f})m")
             
             offset_x, offset_y = self.correction_offset[channel]
             
@@ -231,6 +232,12 @@ class Control:
             current_x, current_y: Current corrected position
             dt: Time step
         """
+        # Initialize PID state for this channel if not present
+        if channel not in self.integral:
+            self.integral[channel] = (0.0, 0.0)
+        if channel not in self.prev_error:
+            self.prev_error[channel] = (0.0, 0.0)
+        
         # Get CV measurement
         cv_x_px, cv_y_px, cv_timestamp = self.cv_data[finger]
         

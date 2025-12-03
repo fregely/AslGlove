@@ -24,6 +24,7 @@ class LetterRecognizer2:
         # Debouncing - prevent rapid letter changes
         self.frames_since_change = 0
         self.min_frames_between_changes = 3  # Require 3 stable frames before new letter
+        self.letter_output_once = False  # Track if current letter has been output
         
         # Debug mode - prints raw detections before temporal filtering
         self.debug_mode = False
@@ -280,8 +281,15 @@ class LetterRecognizer2:
         # ===========================================
         
         # O: All fingers touch thumb making circle (very distinctive)
-        if all(n[("thumb", f)] < 0.35 for f in ["index", "middle", "ring", "pinky"]):
+        # NOTE: With 2D positions (Z=0), distances are smaller - tightened threshold
+        if all(n[("thumb", f)] < 0.20 for f in ["index", "middle", "ring", "pinky"]):
             return "O"
+        
+        # 5: All fingers extended (open hand)
+        if (states["index"] == "extended" and states["middle"] == "extended" and
+            states["ring"] == "extended" and states["pinky"] == "extended" and
+            states["thumb"] == "extended"):
+            return "5"
         
         # B: All 4 fingers extended, thumb curled across palm
         if (states["index"] == "extended" and states["middle"] == "extended" and
@@ -479,7 +487,7 @@ class LetterRecognizer2:
         raw_letter = self.letter_from_states(states, packet)
         
         # Debug mode: print raw detections with stationary state
-        if self.debug_mode and self.debug_counter < 100:
+        if self.debug_mode:
             self.debug_counter += 1
             stationary_str = "STABLE" if is_stationary else "MOVING" if is_stationary is False else "UNKNOWN"
             print(f"[RAW {self.debug_counter}] {stationary_str}(conf={stationary_confidence:.2f}) Letter={raw_letter}, States={states}")
@@ -520,9 +528,19 @@ class LetterRecognizer2:
         
         # Apply debouncing - prevent rapid changes
         if best_letter == self.last_letter:
-            # Same letter as before, don't output again
-            self.frames_since_change += 1
-            return None
+            # Same letter as before - output periodically (every 30 frames ~= 1 second)
+            if not self.letter_output_once:
+                # First time seeing this stable letter, output it
+                self.letter_output_once = True
+                self.frames_since_change = 0
+                return best_letter
+            else:
+                # Already output this letter, output again every 30 frames for feedback
+                self.frames_since_change += 1
+                if self.frames_since_change >= 30:
+                    self.frames_since_change = 0
+                    return best_letter
+                return None
         else:
             # Different letter detected
             # Allow first letter immediately, then require debouncing
@@ -530,12 +548,14 @@ class LetterRecognizer2:
                 # First letter - output immediately
                 self.last_letter = best_letter
                 self.frames_since_change = 0
+                self.letter_output_once = True
                 return best_letter
             elif self.frames_since_change >= self.min_frames_between_changes:
                 # Sufficient time has passed, allow change
                 self.last_letter = best_letter
                 self.frames_since_change = 0
-                return best_letter
+                self.letter_output_once = False  # Reset for new letter - will output on next matching frame
+                return None  # Don't output yet, wait for next frame to trigger output
             else:
                 # Too soon to change, keep waiting
                 self.frames_since_change += 1
