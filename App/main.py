@@ -21,11 +21,11 @@ PID_KI = 0.1 # Integral gain
 PID_KD = 0.2 # Derivative gain
 
 # OpenCV parameters
-THRESH = 225 # Binary threshold for LED detection
+THRESH = 228 # Binary threshold for LED detection
 MIN_AREA = 50 # Minimum area of detected blob
-MAX_AREA = 10000 # Maximum area of detected blob
+MAX_AREA = 500 # Maximum area of detected blob
 MIN_CIRC = 0.6 # Minimum circularity of detected blob
-PIXEL_PER_MM = 10.0 # Pixels per millimeter conversion
+PIXEL_PER_MM = 1.0 # Pixels per millimeter conversion
 
 # Parse args FIRST (before any imports that use Qt)
 parser = argparse.ArgumentParser(
@@ -74,6 +74,7 @@ import math
 import numpy as np  # ADD THIS
 from collections import defaultdict
 from letter_recognizer2 import LetterRecognizer2
+from word_recognizer import WordRecognizer, SigningStateMachine
 from imu_processing.control import Control
 
 control = Control()
@@ -297,7 +298,16 @@ async def main(args):
         # ZUPT stationary tracking for letter recognition
         'stationary_states': {},  # {channel: is_stationary}
         'stationary_confidence': {}  # {channel: confidence}
-    }   
+    }
+    
+    # Word-level recognition (only if not in calibration mode)
+    word_recognizer = None
+    state_machine = None
+    if not args.calibrate:
+        # Create logger reference for word recognizer
+        logger = logging.getLogger('AslGlove')
+        word_recognizer = WordRecognizer(logger=logger)
+        state_machine = SigningStateMachine()   
     
     def log_position_data(state):
         """Log position data for any IMU channel."""
@@ -525,7 +535,7 @@ async def main(args):
                     vp._assign_fingers(vp.last_blob_centers)
                     vp.update_finger_positions(vp.finger_positions)
 
-                # LETTER RECOGNITION with ZUPT stability check
+                # LETTER & WORD RECOGNITION with ZUPT stability check
                 if vp and vp.finger_positions:
                     # Determine overall hand stability from all IMUs
                     # Hand is stable only if MAJORITY of IMUs report stationary
@@ -547,15 +557,63 @@ async def main(args):
                         is_hand_stable = None
                         avg_confidence = 0.0
                     
-                    letter = recognizer.recognize(
-                        vp.finger_positions,
-                        is_stationary=is_hand_stable,
-                        stationary_confidence=avg_confidence
+                    # Only recognize letters after complete LED cycles (all 5 fingers fresh)
+                    # AND when hand is stationary (to ensure finger positions are from same pose)
+                    # LED cycles: 0→1→2→3→4, so recognize every 5th frame after cycle completes
+                    should_recognize = (
+                        vp.led_cycle_count > 0 and               # Complete cycle
+                        len(vp.finger_positions) == 5 and        # All fingers seen
+                        is_hand_stable is True                   # Hand must be stationary
                     )
-                    if letter:
-                        vp.current_letter = letter
+                    
+                    # Get letter detection from recognizer (only on complete cycles + stable hand)
+                    if should_recognize:
+                        detected_letter = recognizer.recognize(
+                            vp.finger_positions,
+                            is_stationary=is_hand_stable,
+                            stationary_confidence=avg_confidence
+                        )
+                    else:
+                        detected_letter = None  # Skip recognition mid-cycle or when moving
+                    
+                    # Update state machine if available
+                    if state_machine:
+                        current_state = state_machine.update(
+                            is_hand_stable, 
+                            detected_letter, 
+                            avg_confidence
+                        )
+                        
+                        # Only process letter if in SIGNING state
+                        if state_machine.should_recognize() and detected_letter:
+                            # Update word recognizer
+                            new_letter, completed_word = word_recognizer.update(
+                                detected_letter, 
+                                is_hand_stable, 
+                                avg_confidence
+                            )
+                            
+                            if new_letter:
+                                vp.current_letter = new_letter
+                                vp.word_display_text = word_recognizer.get_display_text()
+                                stability_indicator = "🟢" if avg_confidence >= 0.95 else "🟡"
+                                print(f"\n{stability_indicator} LETTER: {new_letter} (stability: {avg_confidence:.1%})")
+                                print(f"📝 {word_recognizer.get_display_text()}\n")
+                                
+                            if completed_word:
+                                vp.word_display_text = word_recognizer.get_display_text()
+                                print(f"\n✨ WORD COMPLETE: '{completed_word}' ✨")
+                                print(f"📖 Sentence: {word_recognizer.get_sentence()}\n")
+                            
+                            # Update display even if no new letter (for timeouts, etc)
+                            if not new_letter and not completed_word:
+                                vp.word_display_text = word_recognizer.get_display_text()
+                    
+                    # Fallback to old behavior if no word recognizer
+                    elif detected_letter:
+                        vp.current_letter = detected_letter
                         stability_indicator = "🟢" if is_hand_stable and avg_confidence > 0.8 else "🟡"
-                        print(f"\n{stability_indicator} LETTER DETECTED: {letter} (stability: {avg_confidence:.1%})\n")
+                        print(f"\n{stability_indicator} LETTER DETECTED: {detected_letter} (stability: {avg_confidence:.1%})\n")
                                 
                 # Update position tracker
                 if channel not in position_tracker['start_position']:
@@ -619,6 +677,23 @@ async def main(args):
         logger.info("="*70)
         logger.info("📊 FINAL POSITION SUMMARY")
         logger.info("="*70)
+        
+        # Show word recognition results if available
+        if word_recognizer:
+            stats = word_recognizer.get_stats()
+            logger.info("")
+            logger.info("📝 WORD RECOGNITION SUMMARY")
+            logger.info("="*70)
+            logger.info(f"✉️  Letters detected: {stats['letters_detected']}")
+            logger.info(f"📖 Words completed: {stats['words_completed']}")
+            logger.info(f"⏱️  Session duration: {stats['session_duration']:.1f}s")
+            logger.info(f"⚡ Letters per minute: {stats['letters_per_minute']:.1f}")
+            if word_recognizer.get_sentence():
+                logger.info("")
+                logger.info("📜 FINAL SENTENCE:")
+                logger.info(f"   \"{word_recognizer.get_sentence()}\"")
+            logger.info("="*70)
+            logger.info("")
         
         for ch in sorted(position_tracker['packet_counts'].keys()):
             count = position_tracker['packet_counts'][ch]

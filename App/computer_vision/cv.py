@@ -61,9 +61,20 @@ class VisionProcessor:
         
         self.finger_positions = {}  # most recent finger→(x,y) mapping
         self.current_letter: str | None = None  # store last recognized letter
+        self.word_display_text: str = ""  # display text for word recognition
         self.tracked_fingers = {}   # finger→(x,y) for smoothing
         self.led_index_to_finger = None
         self.cancelled = False  # flag to stop processing cleanly
+        
+        # Differential detection - capture background between LED cycles
+        self.background_frame = None
+        self.use_differential_detection = True  # Enable differential blob detection
+        self.background_update_interval = 5  # Update background every N LED cycles
+        self.led_cycle_count = 0
+        
+        # Expected hand region (set after first detection or calibration)
+        self.hand_roi = None  # (x, y, width, height) - only look here
+        self.roi_margin = 200  # pixels margin around detected hand
         
         # Try to load finger map if it exists
         self.load_finger_map("finger_map.json")
@@ -174,6 +185,11 @@ class VisionProcessor:
                 blurred = cv2.GaussianBlur(gray, (5,5), 0)
 
                 _, mask = cv2.threshold(blurred, self.THRESH, 255, cv2.THRESH_BINARY)
+                
+                # Morphological operations to clean up noise
+                mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, self.kernel)
+                mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, self.kernel, iterations=2)
+
                 mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, self.kernel)
                 mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, self.kernel, iterations=2)
 
@@ -291,6 +307,18 @@ class VisionProcessor:
                         (0,255,0),
                         3
                     )
+                
+                # Show word display text if available (below letter)
+                if self.word_display_text:
+                    cv2.putText(
+                        frame,
+                        self.word_display_text,
+                        (20, 170),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        1.0,
+                        (255,255,0),
+                        2
+                    )
 
                 cv2.imshow("ASL Vision", frame)
 
@@ -401,6 +429,11 @@ class VisionProcessor:
             print(f"✓ Assigned {finger} from LED {self.current_led}")
         
         self.finger_positions[finger] = (sx, sy, 0.0)
+        
+        # Track complete LED cycles (when pinky is processed, cycle is complete)
+        # Pinky is GPIO 6, which is the last in the sequence [1, 3, 20, 7, 6]
+        if finger == "pinky":  # Last finger in cycle
+            self.led_cycle_count += 1
         
         return self.finger_positions
     
