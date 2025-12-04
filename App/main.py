@@ -82,7 +82,7 @@ recognizer = LetterRecognizer2()
 recognizer.debug_mode = True
 
 # Try to load existing calibration data
-recognizer.load_calibration()
+# recognizer.load_calibration()
 
 # for cv functionality
 from computer_vision.cv import VisionProcessor
@@ -299,6 +299,15 @@ async def main(args):
         'stationary_states': {},  # {channel: is_stationary}
         'stationary_confidence': {}  # {channel: confidence}
     }   
+
+    imu_orientations = {}
+    channel_to_finger = {
+        2: "thumb",
+        1: "index",
+        0: "middle",
+        7: "ring",
+        6: "pinky"
+    }
     
     def log_position_data(state):
         """Log position data for any IMU channel."""
@@ -463,6 +472,14 @@ async def main(args):
                 imu_packet = madgwick_filters[channel].process(imu_packet)
                 position_tracker['warmup'][channel] += 1
 
+                # Store IMU orientation for letter recognition
+                if channel in channel_to_finger:
+                    finger_name = channel_to_finger[channel]
+                    imu_orientations[finger_name] = {
+                        'quaternion': imu_packet['quaternion'],
+                        'euler': imu_packet['euler']
+                    }
+
                 if position_tracker['warmup'][channel] <= MADGWICK_WARMUP_PACKETS:
                     # Collect calibration data during warmup
                     accel = imu_packet['accel']
@@ -520,51 +537,64 @@ async def main(args):
                     position_tracker['stationary_states'][channel] = zupt_info.get('active', False)
                     position_tracker['stationary_confidence'][channel] = zupt_info.get('confidence', 0.0)
                 
-               # Assign blobs to fingers → update finger map
+               # After line 308 (after blob assignment)
                 if vp and vp.last_blob_centers:
                     vp._assign_fingers(vp.last_blob_centers)
                     vp.update_finger_positions(vp.finger_positions)
+                    print(f"[MAIN DEBUG] Assigned fingers, positions: {list(vp.finger_positions.keys())}")  # ADD THIS
 
-                # ============================================================
-                # LETTER RECOGNITION - CV POSITIONS ONLY
-                # ============================================================
+                    # Replace the letter recognition block (line 311-329) with this instrumented version:
+                    # ============================================================
+                    # LETTER RECOGNITION - CV + IMU FUSION
+                    # ============================================================
+                    # print(f"[MAIN DEBUG] VP exists: {vp is not None}, Has positions: {vp.finger_positions if vp else None}, Num fingers: {len(vp.finger_positions) if vp and vp.finger_positions else 0}")  # ADD THIS
+                    # print(f"[MAIN DEBUG] IMU orientations: {len(imu_orientations)}/5")  # ADD THIS
 
-                # # RIGHT BEFORE the letter recognition block, add:
-                # if vp:
-                #     print(f"\n[DEBUG] CV finger_positions: {vp.finger_positions}")
-                #     print(f"[DEBUG] Number of fingers: {len(vp.finger_positions)}")
-                #     print(f"[DEBUG] Stationary states: {position_tracker['stationary_states']}")
-                #     print(f"[DEBUG] Would attempt recognition: {len(vp.finger_positions) >= 3}\n")
-
-                # Then your existing letter recognition code...
-                if vp and vp.finger_positions and len(vp.finger_positions) >= 1:
-                    # Get hand stability from ZUPT
-                    stationary_states = list(position_tracker['stationary_states'].values())
-                    confidence_scores = list(position_tracker['stationary_confidence'].values())
-                    
-                    if stationary_states:
-                        num_stationary = sum(stationary_states)
-                        total_imus = len(stationary_states)
-                        is_hand_stable = num_stationary > (total_imus / 2)
-                        avg_confidence = sum(confidence_scores) / len(confidence_scores) if confidence_scores else 0.0
-                    else:
-                        is_hand_stable = True
-                        avg_confidence = 0.0
-                    
-                    # Recognize letter using CV positions directly
-                    letter = recognizer.recognize(
-                        vp.finger_positions,
-                        is_stationary=is_hand_stable,
-                        stationary_confidence=avg_confidence
-                    )
-                    
-                    if letter:
-                        vp.current_letter = letter
-                        stability_indicator = "🟢" if is_hand_stable and avg_confidence > 0.8 else "🟡"
-                        num_fingers = len(vp.finger_positions)
-                        print(f"\n{stability_indicator}📷 LETTER: {letter} "
-                              f"(stability: {avg_confidence:.1%}, CV fingers: {num_fingers}/5)\n")
-
+                    if vp and vp.finger_positions and len(vp.finger_positions) >= 3:
+                        print(f"[MAIN DEBUG] Passed first check - CV fingers: {len(vp.finger_positions)}")  # ADD THIS
+                        
+                        # Only attempt recognition if we have IMU data for all 5 fingers
+                        if len(imu_orientations) == 5:
+                            print(f"[MAIN DEBUG] Have all 5 IMU orientations - attempting recognition")  # ADD THIS
+                            
+                            # Get hand stability from ZUPT
+                            stationary_states = list(position_tracker['stationary_states'].values())
+                            confidence_scores = list(position_tracker['stationary_confidence'].values())
+                            
+                            if stationary_states:
+                                num_stationary = sum(stationary_states)
+                                total_imus = len(stationary_states)
+                                is_hand_stable = num_stationary > (total_imus / 2)
+                                avg_confidence = sum(confidence_scores) / len(confidence_scores) if confidence_scores else 0.0
+                            else:
+                                is_hand_stable = True
+                                avg_confidence = 0.0
+                            
+                            print(f"[MAIN DEBUG] Calling recognizer.classify()...")  # ADD THIS
+                            
+                            # Recognize letter using BOTH CV positions AND IMU orientations
+                            try:
+                                letter = recognizer.classify(
+                                    cv_positions=vp.finger_positions,
+                                    imu_orientations=imu_orientations
+                                )
+                                print(f"[MAIN DEBUG] Recognizer returned: {letter}")  # ADD THIS
+                            except Exception as e:
+                                print(f"[MAIN DEBUG] ERROR in recognizer: {e}")  # ADD THIS
+                                import traceback
+                                traceback.print_exc()
+                                letter = None
+                            
+                            if letter:
+                                vp.current_letter = letter
+                                stability_indicator = "🟢" if is_hand_stable and avg_confidence > 0.8 else "🟡"
+                                num_fingers = len(vp.finger_positions)
+                                print(f"\n{stability_indicator}🤖 LETTER: {letter} "
+                                    f"(IMU+CV fusion, stability: {avg_confidence:.1%}, fingers: {num_fingers}/5)\n")
+                        else:
+                            # Debug: Show which IMU data is missing
+                            missing = [f for f in ['thumb', 'index', 'middle', 'ring', 'pinky'] if f not in imu_orientations]
+                            print(f"[MAIN DEBUG] Missing IMU data: {missing}")  # CHANGED from logger.debug
                                 
                 # Update position tracker
                 if channel not in position_tracker['start_position']:

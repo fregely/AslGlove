@@ -3,560 +3,315 @@
 # mypy: ignore-errors
 
 import math
-import statistics
-import json
-import asyncio
+import numpy as np
 
 class LetterRecognizer2:
-    """ ASL Letter Recognizer using fingertip positions and open-hand calibration."""
+    """ASL Letter Recognizer using IMU curl angles + CV pixel distances."""
 
     def __init__(self):
-        # Stores normalized distance baselines for open hand
-        self.open_calibration = {}   # {("thumb","index"): avg_distance, ...}
         self.finger_names = ["thumb", "index", "middle", "ring", "pinky"]
         self.last_letter = None
         
-        # Temporal filtering for stability
-        self.letter_history = []  # Last N detected letters
-        self.history_size = 5     # Number of frames to consider
-        self.min_confidence = 3   # Minimum occurrences in history (3/5 = 60%)
+        # Temporal filtering
+        self.letter_history = []
+        self.history_size = 5
+        self.min_confidence = 3  # 3/5 frames = 60%
         
-        # Debouncing - prevent rapid letter changes
+        # Debouncing
         self.frames_since_change = 0
-        self.min_frames_between_changes = 3  # Require 3 stable frames before new letter
-        self.letter_output_once = False  # Track if current letter has been output
+        self.min_frames_between_changes = 3
+        self.letter_output_once = False
         
-        # Debug mode - prints raw detections before temporal filtering
+        # Debug mode
         self.debug_mode = False
-        self.debug_counter = 0
 
-    # -------------------------------
-    # Helper: Euclidean distance
-    # -------------------------------
+    # ===========================================
+    # MAIN ENTRY POINT
+    # ===========================================
+    
+    def classify(self, cv_positions, imu_orientations):
+        """
+        Main entry - uses RAW pixel positions + IMU angles.
+        
+        Args:
+            cv_positions: {finger: (x, y)} in pixels
+            imu_orientations: {finger: {'quaternion': [...], 'euler': [...]}}
+        """
+        if not cv_positions or not imu_orientations:
+            return None
+        
+        # Compute IMU curl angles
+        curl_angles = self.compute_curl_angles(imu_orientations)
+        
+        # Detect with temporal filtering
+        return self.letter_from_features(cv_positions, curl_angles)
+    
+    # ===========================================
+    # IMU CURL ANGLE COMPUTATION
+    # ===========================================
+    
+    def compute_curl_angles(self, imu_orientations):
+        """Convert quaternions to curl angles."""
+        palm_quat = imu_orientations['thumb']['quaternion']
+        
+        angles = {}
+        for finger in ['index', 'middle', 'ring', 'pinky']:
+            finger_quat = imu_orientations[finger]['quaternion']
+            angles[finger] = self._relative_pitch(palm_quat, finger_quat)
+        
+        return angles
+    
+    def _relative_pitch(self, q1, q2):
+        """Get pitch angle between two quaternions."""
+        _, pitch1, _ = self._quat_to_euler(q1)
+        _, pitch2, _ = self._quat_to_euler(q2)
+        return abs(pitch2 - pitch1)
+    
+    def _quat_to_euler(self, q):
+        """Convert quaternion to Euler angles (degrees)."""
+        w, x, y, z = q
+        
+        roll = math.atan2(2*(w*x + y*z), 1 - 2*(x*x + y*y))
+        sinp = 2*(w*y - z*x)
+        pitch = math.asin(np.clip(sinp, -1, 1))
+        yaw = math.atan2(2*(w*z + x*y), 1 - 2*(y*y + z*z))
+        
+        return (math.degrees(roll), math.degrees(pitch), math.degrees(yaw))
+    
+    # ===========================================
+    # HELPER FUNCTIONS
+    # ===========================================
+    
     def dist(self, a, b):
-        """Calculate distance between two points (2D or 3D)."""
+        """Euclidean distance between two points."""
         dx = a[0] - b[0]
         dy = a[1] - b[1]
         dz = (a[2] - b[2]) if len(a) > 2 and len(b) > 2 else 0.0
         return math.sqrt(dx**2 + dy**2 + dz**2)
-
-    # -------------------------------
-    # Helper: list of all pair combinations
-    # -------------------------------
-    def _finger_pairs(self):
-        pairs = []
-        for i in range(len(self.finger_names)):
-            for j in range(i + 1, len(self.finger_names)):
-                pairs.append((self.finger_names[i], self.finger_names[j]))
-        return pairs
     
-    # ------------------------------------------
-    # Store calibration table
-    # Called externally after collecting open samples
-    # ------------------------------------------
-    def set_open_calibration(self, table):
-        self.open_calibration = table
+    # ===========================================
+    # LETTER DETECTION WITH TEMPORAL FILTERING
+    # ===========================================
     
-    # ------------------------------------------
-    # Save calibration to JSON file
-    # ------------------------------------------
-    def save_calibration(self, filename="open_hand_calibration.json"):
-        """Save open hand calibration data to JSON file."""
-        # Convert tuple keys to strings for JSON serialization
-        serializable = {f"{k[0]}-{k[1]}": v for k, v in self.open_calibration.items()}
-        with open(filename, 'w') as f:
-            json.dump(serializable, f, indent=4)
-        print(f"💾 Saved open hand calibration to {filename}")
-    
-    # ------------------------------------------
-    # Load calibration from JSON file
-    # ------------------------------------------
-    def load_calibration(self, filename="open_hand_calibration.json"):
-        """Load open hand calibration data from JSON file."""
-        try:
-            with open(filename, 'r') as f:
-                serializable = json.load(f)
-            # Convert string keys back to tuples
-            self.open_calibration = {tuple(k.split('-')): v for k, v in serializable.items()}
-            print(f"✅ Loaded open hand calibration from {filename}")
-            return True
-        except FileNotFoundError:
-            print(f"⚠️ Calibration file {filename} not found")
-            return False
-        except Exception as e:
-            print(f"❌ Error loading calibration: {e}")
-            return False
-    
-    # -------------------------------
-    # 1. Calibration: open hand
-    # -------------------------------
-    async def calibrate_open_hand(self, vision_processor, samples=50, save=True):
+    def letter_from_features(self, cv_positions, curl_angles):
         """
-        Collects fingertip positions while the user holds an open hand
-        and computes average distances between all fingertip pairs.
+        Detect letter with temporal filtering.
         
         Args:
-            vision_processor: VisionProcessor instance with finger_positions
-            samples: Number of samples to collect
-            save: Whether to save calibration to file
+            cv_positions: Raw pixel coords {finger: (x,y)}
+            curl_angles: IMU angles {finger: degrees}
         """
-
-        print("\n--- OPEN HAND CALIBRATION ---")
-        print("Please hold your hand completely open and still.")
-        print(f"Collecting {samples} samples...")
+        if cv_positions is None or curl_angles is None:
+            return None
         
-        # Temporary storage for distances
-        collected = {pair: [] for pair in self._finger_pairs()}
-
-        count = 0
-        last_reported = 0
-        try:
-            while count < samples:
-                # Get finger positions from vision processor
-                if not vision_processor.finger_positions:
-                    await asyncio.sleep(0.05)
-                    continue
-                    
-                packet = vision_processor.finger_positions
-                
-                # Debug: Show what we have
-                available_fingers = list(packet.keys())
-                if len(available_fingers) != last_reported:
-                    print(f"  Available fingers: {available_fingers}")
-                    last_reported = len(available_fingers)
-                
-                # Verify all fingers are present
-                if not all(f in packet for f in self.finger_names):
-                    await asyncio.sleep(0.05)
-                    continue
-
-                # Compute distances for this sample
-                for (f1, f2) in self._finger_pairs():
-                    d = self.dist(packet[f1], packet[f2])
-                    collected[(f1, f2)].append(d)
-
-                count += 1
-                if count % 10 == 0:
-                    print(f"  {count}/{samples} samples collected...")
-                
-                await asyncio.sleep(0.05)
-
-            # Average distances
-            for pair in collected:
-                self.open_calibration[pair] = statistics.mean(collected[pair])
-
-            print(f"\n✔ Successfully collected all {samples} samples!")
-            print("✔ Open-hand calibration complete!\n")
-            
-            # Save to file
-            if save:
-                self.save_calibration()
-                print("✅ Ready for letter recognition!\n")
-                
-        except (KeyboardInterrupt, asyncio.CancelledError):
-            print("\n⚠️ Calibration cancelled by user")
-            raise
-
-
-    # -------------------------------
-    # Helper: fetch fingertip positions
-    # You will replace this with your real packet reading
-    # -------------------------------
-    async def _get_finger_positions(self, client):
-        """
-        Expected output format:
-        {
-            "thumb":  (x,y,z),
-            "index":  (x,y,z),
-            "middle": (x,y,z),
-            "ring":   (x,y,z),
-            "pinky":  (x,y,z)
-        }
-        """
-        try:
-            raw = await client.get_latest()  # <-- Replace with your BLE playback
-            return raw["fingertips"]
-        except:
-            return None
-
-
-    # -----------------------------------------------------
-    # 2. Compute normalized distances for current packet
-    # -----------------------------------------------------
-    def compute_normalized_distances(self, packet):
-        """
-        Returns {pair: normalized_value}
-
-        normalized = current_distance / open_calibration_distance
-        """
-        # Check if calibration data exists
-        if not self.open_calibration:
-            return None
-            
-        normalized = {}
-
-        for (f1, f2) in self._finger_pairs():
-            cur_d = self.dist(packet[f1], packet[f2])
-            # Check if this specific pair exists in calibration
-            if (f1, f2) not in self.open_calibration:
-                return None
-            base_d = self.open_calibration[(f1, f2)]
-            normalized[(f1, f2)] = cur_d / base_d
-
-        return normalized
-
-
-    # -----------------------------------------------------
-    # 3. Finger state classification (open / curled / closed)
-    # -----------------------------------------------------
-    def classify_finger_states(self, packet):
-        """
-        Uses thumb → finger normalized distances to determine
-        if each finger is extended, curled, or closed.
-
-        Returns: { "index": "extended", "middle": "curled", ... }
-        Returns None if calibration data is not available.
-        """
-
-        normalized = self.compute_normalized_distances(packet)
-        
-        # Return None if no calibration data
-        if normalized is None:
-            return None
-            
+        # Classify states from IMU angles
         states = {}
-
-        # Thresholds with hysteresis bands to reduce noise
-        EXTENDED_MIN = 0.80      # Lowered slightly for easier detection
-        CURL_MAX = 0.60          # Increased to create wider bands
-        CLOSED_MAX = 0.40        # Increased to reduce false closures
-
-        for finger in ["index", "middle", "ring", "pinky"]:
-
-            n = normalized[("thumb", finger)]
-
-            if n > EXTENDED_MIN:
+        EXTENDED_MAX = 30
+        CURLED_MIN = 90
+        
+        for finger in ['index', 'middle', 'ring', 'pinky']:
+            angle = curl_angles.get(finger, 0)
+            if angle < EXTENDED_MAX:
                 states[finger] = "extended"
-            elif n < CLOSED_MAX:
+            elif angle > CURLED_MIN:
                 states[finger] = "closed"
-            elif n < CURL_MAX:
-                states[finger] = "curled"
             else:
                 states[finger] = "semi"
-
-        # Thumb status can be classified separately if you want
-        # for now we do relative distance to index:
-        ti = normalized[("thumb", "index")]
-        if ti > EXTENDED_MIN:
+        
+        # Thumb state from CV pixel distance
+        def px_dist(f1, f2):
+            if f1 not in cv_positions or f2 not in cv_positions:
+                return 9999
+            return self.dist(cv_positions[f1], cv_positions[f2])
+        
+        ti_px = px_dist("thumb", "index")
+        if ti_px > 200:
             states["thumb"] = "extended"
-        elif ti < CURL_MAX:
+        elif ti_px < 100:
             states["thumb"] = "closed"
         else:
             states["thumb"] = "semi"
+        
+        print(f"  Computed states: {states}")
+        print(f"  Thumb-index distance: {ti_px:.1f}px")
 
-        return states
-    
-    
-    # ------------------------------------------
-    # Letter rules - REORGANIZED BY SPECIFICITY
-    # Most specific/unique patterns first, general patterns last
-    # ------------------------------------------
-    def letter_from_states(self, states, packet):
-        """
-        Matches finger states and distances to ASL letters.
-        Returns the detected letter or None.
+        # Get raw detection
+        raw_detected = self.letter_from_states_enhanced(states, cv_positions, curl_angles)
         
-        Letters are checked in order of specificity to avoid conflicts.
-        """
+        # ============================================
+        # TEMPORAL FILTERING
+        # ============================================
         
-        # Get normalized distances for additional checks
-        n = self.compute_normalized_distances(packet)
-        
-        # Return None if no calibration data
-        if n is None:
-            return None
-        
-        # ===========================================
-        # PRIORITY 1: MOST UNIQUE PATTERNS
-        # ===========================================
-        
-        # O: All fingers touch thumb making circle (very distinctive)
-        # NOTE: With 2D positions (Z=0), distances are smaller - tightened threshold
-        if all(n[("thumb", f)] < 0.20 for f in ["index", "middle", "ring", "pinky"]):
-            return "O"
-        
-        # 5: All fingers extended (open hand)
-        if (states["index"] == "extended" and states["middle"] == "extended" and
-            states["ring"] == "extended" and states["pinky"] == "extended" and
-            states["thumb"] == "extended"):
-            return "5"
-        
-        # B: All 4 fingers extended, thumb curled across palm
-        if (states["index"] == "extended" and states["middle"] == "extended" and
-            states["ring"] == "extended" and states["pinky"] == "extended" and
-            states["thumb"] in ["curled", "closed"]):
-            return "B"
-        
-        # I: Only pinky extended (others curled)
-        if (states["pinky"] == "extended" and 
-            states["index"] in ["curled", "closed"] and
-            states["middle"] in ["curled", "closed"] and
-            states["ring"] in ["curled", "closed"]):
-            return "I"
-        
-        # Y: Thumb and pinky extended, others curled
-        if (states["pinky"] == "extended" and states["thumb"] == "extended" and
-            states["index"] in ["curled", "closed"] and
-            states["middle"] in ["curled", "closed"] and
-            states["ring"] in ["curled", "closed"]):
-            return "Y"
-        
-        # ===========================================
-        # PRIORITY 2: THREE-FINGER PATTERNS
-        # ===========================================
-        
-        # W: Three fingers (index, middle, ring) extended, pinky curled
-        if (states["index"] == "extended" and states["middle"] == "extended" and
-            states["ring"] == "extended" and states["pinky"] in ["curled", "closed"]):
-            # Ensure fingers are spread (not U shape)
-            if n[("index", "ring")] > 0.35:
-                return "W"
-        
-        # F: Index and thumb make circle, other 3 fingers extended
-        if (states["middle"] == "extended" and states["ring"] == "extended" and
-            states["pinky"] == "extended" and
-            states["index"] in ["curled", "closed"]):
-            if n[("thumb", "index")] < 0.30:  # Thumb and index touching
-                return "F"
-        
-        # ===========================================
-        # PRIORITY 3: TWO-FINGER PATTERNS (CHECK SPACING)
-        # ===========================================
-        
-        # V: Index and middle extended APART, others curled
-        if (states["index"] == "extended" and states["middle"] == "extended" and
-            states["ring"] in ["curled", "closed"] and states["pinky"] in ["curled", "closed"]):
-            if n[("index", "middle")] > 0.55:  # Wide spacing = V
-                return "V"
-        
-        # R: Index and middle crossed/very close, others curled
-        if (states["index"] == "extended" and states["middle"] == "extended" and
-            states["ring"] in ["curled", "closed"] and states["pinky"] in ["curled", "closed"]):
-            if n[("index", "middle")] < 0.35:  # Crossed/close = R
-                return "R"
-        
-        # U: Index and middle extended together (medium spacing), others curled
-        if (states["index"] == "extended" and states["middle"] == "extended" and
-            states["ring"] in ["curled", "closed"] and states["pinky"] in ["curled", "closed"]):
-            if 0.35 <= n[("index", "middle")] <= 0.55:  # Medium spacing = U
-                return "U"
-        
-        # K: Index and middle extended in V, thumb between them
-        if (states["index"] == "extended" and states["middle"] == "extended" and
-            states["ring"] in ["curled", "closed"] and states["pinky"] in ["curled", "closed"]):
-            if (n[("thumb", "index")] < 0.45 and n[("thumb", "middle")] < 0.45 and
-                n[("index", "middle")] > 0.40):
-                return "K"
-        
-        # H: Index and middle extended sideways very close, others curled
-        if (states["index"] == "extended" and states["middle"] == "extended" and
-            states["ring"] in ["curled", "closed"] and states["pinky"] in ["curled", "closed"]):
-            if n[("index", "middle")] < 0.25:  # Very tight = H
-                return "H"
-        
-        # P: Index pointing down, middle extended, thumb between them
-        if (states["index"] == "extended" and states["middle"] == "extended" and
-            states["ring"] in ["curled", "closed"] and states["pinky"] in ["curled", "closed"]):
-            if n[("thumb", "index")] < 0.35 and n[("thumb", "middle")] > 0.40:
-                return "P"
-        
-        # ===========================================
-        # PRIORITY 4: ONE FINGER + THUMB PATTERNS
-        # ===========================================
-        
-        # L: Thumb and index extended at right angle, others curled
-        if (states["thumb"] == "extended" and states["index"] == "extended" and
-            states["middle"] in ["curled", "closed"] and
-            states["ring"] in ["curled", "closed"] and
-            states["pinky"] in ["curled", "closed"]):
-            if n[("thumb", "index")] > 0.65:  # Wide angle
-                return "L"
-        
-        # D: Index extended, others curled, thumb touches middle finger
-        if (states["index"] == "extended" and 
-            states["middle"] in ["curled", "closed"] and
-            states["ring"] in ["curled", "closed"] and 
-            states["pinky"] in ["curled", "closed"]):
-            if n[("thumb", "middle")] < 0.30:  # Thumb touching middle
-                return "D"
-        
-        # G: Index extended sideways, thumb extended, others curled
-        if (states["index"] == "extended" and 
-            states["middle"] in ["curled", "closed"] and
-            states["ring"] in ["curled", "closed"] and 
-            states["pinky"] in ["curled", "closed"]):
-            if states["thumb"] == "extended" and n[("thumb", "index")] > 0.55:
-                return "G"
-        
-        # Q: Thumb and index pointing down
-        if (states["thumb"] == "extended" and states["index"] == "extended" and
-            states["middle"] in ["curled", "closed"] and 
-            states["ring"] in ["curled", "closed"] and
-            states["pinky"] in ["curled", "closed"]):
-            if n[("thumb", "index")] < 0.45:
-                return "Q"
-        
-        # ===========================================
-        # PRIORITY 5: CLOSED FIST VARIATIONS
-        # ===========================================
-        
-        # C: Curved hand shape (all fingers slightly curled in C shape)
-        if all(states[f] in ["semi", "curled"] for f in ["index", "middle", "ring", "pinky"]):
-            if 0.50 < n[("thumb", "index")] < 0.75:
-                return "C"
-        
-        # E: All fingers tightly curled, thumb across fingernails
-        if all(states[f] in ["curled", "closed"] for f in ["index", "middle", "ring", "pinky"]):
-            if n[("thumb", "index")] < 0.20:  # Very tight
-                return "E"
-        
-        # A: All fingers curled into fist, thumb alongside (looser than E)
-        if all(states[f] in ["curled", "closed"] for f in ["index", "middle", "ring", "pinky"]):
-            if 0.25 < n[("thumb", "index")] < 0.45:
-                return "A"
-        
-        # S: Fist with thumb across front (between A and E)
-        if all(states[f] in ["curled", "closed"] for f in ["index", "middle", "ring", "pinky"]):
-            if 0.20 <= n[("thumb", "index")] <= 0.30:
-                return "S"
-        
-        # M: Thumb under 3 curled fingers (very specific thumb position)
-        if all(states[f] in ["curled", "closed"] for f in ["index", "middle", "ring", "pinky"]):
-            if n[("thumb", "pinky")] < 0.30 and n[("thumb", "index")] < 0.40:
-                return "M"
-        
-        # N: Thumb under 2 curled fingers (index and middle)
-        if all(states[f] in ["curled", "closed"] for f in ["index", "middle", "ring", "pinky"]):
-            if n[("thumb", "middle")] < 0.30 and n[("thumb", "ring")] > 0.35:
-                return "N"
-        
-        # T: Thumb between index and middle (very specific)
-        if all(states[f] in ["curled", "closed"] for f in ["index", "middle", "ring", "pinky"]):
-            if n[("thumb", "index")] < 0.20 and 0.25 < n[("thumb", "middle")] < 0.40:
-                return "T"
-        
-        # X: Index finger bent/hooked, others curled
-        if (states["index"] == "semi" and 
-            states["middle"] in ["curled", "closed"] and
-            states["ring"] in ["curled", "closed"] and 
-            states["pinky"] in ["curled", "closed"]):
-            return "X"
-        
-        # No match found
-        return None
-
-    # ------------------------------------------
-    # Main entry with temporal filtering
-    # (packet: fingertip 3D positions)
-    # ------------------------------------------
-    def recognize(self, packet, is_stationary=None, stationary_confidence=0.0):
-        """
-        Recognize ASL letter from finger positions.
-        
-        Args:
-            packet: Finger positions dict {finger: (x,y,z)}
-            is_stationary: Boolean indicating if hand is stationary (from ZUPT)
-            stationary_confidence: Confidence score 0-1 for stationary state
-        """
-        states = self.classify_finger_states(packet)
-        
-        # Skip recognition if no calibration data
-        if states is None:
-            return None
-            
-        # ZUPT INTEGRATION: Only recognize when hand is stationary
-        # This dramatically reduces false positives from drift
-        if is_stationary is False:
-            # Hand is moving - don't attempt recognition
-            self.letter_history.append(None)
-            if len(self.letter_history) > self.history_size:
-                self.letter_history.pop(0)
-            return None
-        
-        # Get raw detection for this frame
-        raw_letter = self.letter_from_states(states, packet)
-        
-        # # Debug mode: print raw detections with stationary state
-        # if self.debug_mode:
-        #     self.debug_counter += 1
-        #     stationary_str = "STABLE" if is_stationary else "MOVING" if is_stationary is False else "UNKNOWN"
-        #     print(f"[RAW {self.debug_counter}] {stationary_str}(conf={stationary_confidence:.2f}) Letter={raw_letter}, States={states}")
-        
-        # Add to history (use None if no detection)
-        self.letter_history.append(raw_letter)
+        # Add to history
+        self.letter_history.append(raw_detected)
         if len(self.letter_history) > self.history_size:
             self.letter_history.pop(0)
         
-        # Need at least 2 frames for comparison
+        # Need at least 2 frames
         if len(self.letter_history) < 2:
             return None
         
-        # Count occurrences in history (excluding None)
+        # Count occurrences (excluding None)
         letter_counts = {}
         for l in self.letter_history:
             if l is not None:
                 letter_counts[l] = letter_counts.get(l, 0) + 1
         
-        # Find most common letter
         if not letter_counts:
             return None
-            
+        
+        # Find most common letter
         best_letter = max(letter_counts, key=letter_counts.get)
         best_count = letter_counts[best_letter]
         
-        # Adaptive confidence threshold based on stationary state
-        # When very stable (high ZUPT confidence), we can be more lenient
-        # When transitioning or uncertain, require more agreement
-        required_confidence = self.min_confidence
-        if stationary_confidence is not None and stationary_confidence < 0.8:
-            # Lower confidence in stationary state - require more frames
-            required_confidence = min(self.history_size, self.min_confidence + 1)
-        
         # Require minimum confidence
-        if best_count < required_confidence:
+        if best_count < self.min_confidence:
             return None
         
-        # Apply debouncing - prevent rapid changes
+        # ============================================
+        # DEBOUNCING
+        # ============================================
+        
         if best_letter == self.last_letter:
-            # Same letter as before - output periodically (every 30 frames ~= 1 second)
+            # Same letter - output first time, then every 30 frames
             if not self.letter_output_once:
-                # First time seeing this stable letter, output it
                 self.letter_output_once = True
                 self.frames_since_change = 0
-                return best_letter
+                detected = best_letter
             else:
-                # Already output this letter, output again every 30 frames for feedback
                 self.frames_since_change += 1
                 if self.frames_since_change >= 30:
                     self.frames_since_change = 0
-                    return best_letter
-                return None
+                    detected = best_letter
+                else:
+                    detected = None
         else:
-            # Different letter detected
-            # Allow first letter immediately, then require debouncing
+            # Different letter
             if self.last_letter is None:
-                # First letter - output immediately
+                # First ever letter - output immediately
                 self.last_letter = best_letter
                 self.frames_since_change = 0
                 self.letter_output_once = True
-                return best_letter
+                detected = best_letter
             elif self.frames_since_change >= self.min_frames_between_changes:
-                # Sufficient time has passed, allow change
+                # Enough time passed - allow change
                 self.last_letter = best_letter
                 self.frames_since_change = 0
-                self.letter_output_once = False  # Reset for new letter - will output on next matching frame
-                return None  # Don't output yet, wait for next frame to trigger output
+                self.letter_output_once = False
+                detected = None  # Will output on next frame
             else:
-                # Too soon to change, keep waiting
+                # Too soon - wait
                 self.frames_since_change += 1
-                return None
+                detected = None
+        
+        # DEBUG output
+        if self.debug_mode and detected:
+            self._debug_print_raw(cv_positions, curl_angles, states, detected)
+        
+        return detected
+    
+    # ===========================================
+    # LETTER DETECTION RULES
+    # ===========================================
+    
+    def letter_from_states_enhanced(self, states, cv_positions, curl_angles):
+        """
+        6 basic letters using RAW pixel distances + IMU angles.
+        """
+        # Helper: Calculate raw pixel distance
+        def px_dist(f1, f2):
+            if f1 not in cv_positions or f2 not in cv_positions:
+                return 9999
+            return self.dist(cv_positions[f1], cv_positions[f2])
+        
+        # Helper: IMU curl checks
+        def is_extended(finger):
+            return curl_angles.get(finger, 180) < 30
+        
+        def is_curled(finger):
+            return curl_angles.get(finger, 0) > 90
+        
+        def is_semi(finger):
+            angle = curl_angles.get(finger, 0)
+            return 30 <= angle <= 90
+        
+        # ===========================================
+        # 6 LETTERS
+        # ===========================================
+        
+        # 5: All fingers extended AND spread
+        if (is_extended("index") and is_extended("middle") and 
+            is_extended("ring") and is_extended("pinky") and
+            states["thumb"] == "extended"):
+            if px_dist("index", "pinky") > 250:
+                return "5"
+        
+        # W: Three fingers extended, pinky curled
+        if (is_extended("index") and is_extended("middle") and 
+            is_extended("ring") and is_curled("pinky")):
+            if px_dist("index", "ring") > 150:
+                return "W"
+        
+        # V: Index, middle extended APART; others curled
+        if (is_extended("index") and is_extended("middle") and 
+            is_curled("ring") and is_curled("pinky")):
+            if px_dist("index", "middle") > 100:
+                return "V"
+        
+        # R: Index, middle extended CROSSED; others curled
+        if (is_extended("index") and is_extended("middle") and 
+            is_curled("ring") and is_curled("pinky")):
+            if px_dist("index", "middle") < 50:
+                return "R"
+        
+        # U: Index, middle extended TOGETHER; others curled
+        if (is_extended("index") and is_extended("middle") and 
+            is_curled("ring") and is_curled("pinky")):
+            if 50 <= px_dist("index", "middle") <= 100:
+                return "U"
+        
+        # X: Index semi-curled (hooked); others curled
+        if (is_semi("index") and 
+            is_curled("middle") and is_curled("ring") and is_curled("pinky")):
+            return "X"
+        
+        return None
+    
+    # ===========================================
+    # DEBUG OUTPUT
+    # ===========================================
+    
+    def _debug_print_raw(self, cv_positions, curl_angles, states, detected_letter):
+        """Debug with RAW pixel distances."""
+        print("\n" + "="*70)
+        print("🔍 HAND STATE DEBUG (Raw Pixels)")
+        print("="*70)
+        
+        # IMU angles
+        print("\n📐 IMU CURL ANGLES:")
+        for finger in ['index', 'middle', 'ring', 'pinky']:
+            angle = curl_angles.get(finger, 0)
+            state = states.get(finger, "unknown")
+            marker = "✓EXTEND" if angle < 30 else "✓CURL" if angle > 90 else "~SEMI"
+            print(f"  {finger:8s}: {angle:5.1f}° → {state:8s} [{marker}]")
+        
+        thumb_state = states.get("thumb", "unknown")
+        print(f"  thumb   : {thumb_state:8s} (from CV distance)")
+        
+        # CV distances
+        print("\n📏 KEY PIXEL DISTANCES:")
+        pairs = [
+            ("index", "middle"), 
+            ("index", "pinky"), 
+            ("index", "ring"), 
+            ("thumb", "index"),
+            ("ring", "pinky")
+        ]
+        
+        for f1, f2 in pairs:
+            if f1 in cv_positions and f2 in cv_positions:
+                d = self.dist(cv_positions[f1], cv_positions[f2])
+                print(f"  {f1:6s} ↔ {f2:6s}: {d:6.1f}px")
+        
+        print(f"\n🎯 DETECTED: {detected_letter}")
+        print("="*70 + "\n")

@@ -1,37 +1,37 @@
 {
-    "1": {
+    "0": {
         "finger": "thumb",
         "center": [
-            512,
-            304
+            294,
+            303
+        ]
+    },
+    "1": {
+        "finger": "index",
+        "center": [
+            280,
+            320
+        ]
+    },
+    "2": {
+        "finger": "middle",
+        "center": [
+            504,
+            220
         ]
     },
     "3": {
-        "finger": "index",
-        "center": [
-            632,
-            208
-        ]
-    },
-    "20": {
-        "finger": "middle",
-        "center": [
-            499,
-            309
-        ]
-    },
-    "7": {
         "finger": "ring",
         "center": [
-            721,
-            271
+            560,
+            132
         ]
     },
-    "6": {
+    "4": {
         "finger": "pinky",
         "center": [
-            561,
-            214
+            873,
+            297
         ]
     }
 }
