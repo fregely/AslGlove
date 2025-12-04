@@ -1,23 +1,30 @@
-# pylint: disable=E1101
-# mypy: ignore-errors
+# imu_processing/control.py
 """
 Control - Position correction using PID with CV ground truth
 
-Continuously applies a correction offset to IMU positions.
-Updates the offset when CV measurements arrive using PID control.
+Key improvements:
+1. Better initial position alignment from finger_map.json
+2. Debug logging to track what's happening
+3. Coordinate system validation
+4. More aggressive PID for faster correction
 """
 
 import time
-from typing import Dict, Tuple
+import json
+import os
+from typing import Dict, Tuple, Optional
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class Control:
     """
     Applies continuous position correction to IMU data.
     
+    - Initialization: Aligns IMU starting position with CV calibrated position
     - Every packet: Applies current correction offset to IMU position
-    - When NEW CV data arrives: Immediately updates correction offset using PID
-    - Result: packet gets 'corrected_position' field added
+    - When NEW CV data arrives: Updates correction offset using PID
     """
     def __init__(self, kp: float = 0.5, ki: float = 0.1, kd: float = 0.2) -> None:
         # PID parameters
@@ -26,23 +33,26 @@ class Control:
         self.kd = kd
         
         # Per-channel correction state
-        self.correction_offset: Dict[int, Tuple[float, float]] = {}  # channel -> (offset_x, offset_y)
-        self.integral: Dict[int, Tuple[float, float]] = {}           # channel -> (integral_x, integral_y)
-        self.prev_error: Dict[int, Tuple[float, float]] = {}         # channel -> (error_x, error_y)
-        self.last_corrected_pos: Dict[int, Tuple[float, float]] = {} # channel -> (x, y) - last corrected position
-        self.last_cv_time: Dict[str, float] = {}       # finger -> timestamp of last CV update
+        self.correction_offset: Dict[int, Tuple[float, float]] = {}
+        self.integral: Dict[int, Tuple[float, float]] = {}
+        self.prev_error: Dict[int, Tuple[float, float]] = {}
+        self.last_corrected_pos: Dict[int, Tuple[float, float]] = {}
+        self.last_cv_time: Dict[str, float] = {}
         
         # Latest CV measurements
-        self.cv_data: Dict[str, Tuple[float, float, float]] = {}  # finger -> (x_px, y_px, timestamp)
+        self.cv_data: Dict[str, Tuple[float, float, float]] = {}
         
-        # Time tracking for IMU
+        # Time tracking
         self.imu_time: Dict[int, float] = {}
         self.imu_start_time: Dict[int, float] = {}
-        self.initial_offset_applied: Dict[int, bool] = {}  # Track if initial offset was set
+        self.first_position_received: Dict[int, bool] = {}  # Track if we've seen first position
         
-        # Pixel to meter conversion (calibrate this!)
-        self.px_to_m = 0.001  # 1000 pixels = 1 meter
+        # Pixel to meter conversion (will be set by main.py)
+        self.px_to_m = 0.001
+        
+        # Initial calibrated positions (from finger_map.json)
         self.initial_led_positions: Dict[str, Tuple[float, float]] = {}
+        self.calibration_loaded = False
         
         # Finger to channel mapping
         self.imu_to_finger = {
@@ -60,20 +70,24 @@ class Control:
             6: "pinky"
         }
         
-        # Load initial calibrated positions from finger_map.json
+        # Load initial calibrated positions
         self._load_initial_positions()
     
     def _load_initial_positions(self, filename: str = "finger_map.json") -> None:
         """
-        Load initial LED positions from finger_map.json and initialize IMU corrected positions.
-        This ensures IMUs start at the same position as their calibrated CV positions.
+        Load initial LED positions from finger_map.json.
+        This provides the ground truth starting positions for each finger.
         """
-        import json
-        import os
+        if not os.path.exists(filename):
+            logger.warning(f"⚠️  Calibration file '{filename}' not found!")
+            logger.warning("   IMUs will start at (0, 0) - run calibration first!")
+            return
         
         try:
             with open(filename, 'r') as f:
                 finger_map = json.load(f)
+            
+            logger.info(f"📁 Loading calibration from {filename}:")
             
             # Extract LED GPIO -> (x, y) pixel positions
             for led_gpio_str, info in finger_map.items():
@@ -81,59 +95,86 @@ class Control:
                 finger_name = info.get("finger")
                 center_px = info.get("center")  # [x_px, y_px]
                 
-                if finger_name and center_px:
-                    # Convert pixels to meters
-                    x_m = center_px[0] * self.px_to_m
-                    y_m = center_px[1] * self.px_to_m
-                    self.initial_led_positions[finger_name] = (x_m, y_m)
-                    
-                    # Initialize last_corrected_pos for the corresponding IMU channel
-                    # Map finger -> channel using reverse lookup
-                    for channel, finger in self.imu_to_finger.items():
-                        if finger == finger_name:
-                            self.last_corrected_pos[channel] = (x_m, y_m)
-                            print(f"[CONTROL] Initialized ch{channel} ({finger_name}) at CV position: ({x_m:.3f}, {y_m:.3f})m")
-                            break
+                if not finger_name or not center_px:
+                    logger.warning(f"   ⚠️  Incomplete data for LED {led_gpio_str}")
+                    continue
+                
+                # Store pixel positions (will convert to meters when px_to_m is set)
+                self.initial_led_positions[finger_name] = (center_px[0], center_px[1])
+                logger.info(f"   ✓ {finger_name}: ({center_px[0]:.1f}, {center_px[1]:.1f}) pixels")
             
-            print(f"[CONTROL] Loaded {len(self.initial_led_positions)} initial positions from {filename}")
+            if self.initial_led_positions:
+                self.calibration_loaded = True
+                logger.info(f"✅ Loaded {len(self.initial_led_positions)} finger positions")
+            else:
+                logger.warning("⚠️  No valid finger positions found in calibration file")
             
-        except FileNotFoundError:
-            print(f"[CONTROL] Warning: {filename} not found. IMUs will start at (0, 0)")
         except Exception as e:
-            print(f"[CONTROL] Error loading initial positions: {e}")
+            logger.error(f"❌ Error loading calibration file: {e}")
+    
+    def initialize_channel_position(self, channel: int, imu_x: float, imu_y: float) -> Tuple[float, float]:
+        """
+        Initialize a channel's position based on calibrated CV position.
+        Called when first position packet arrives for this channel.
+        
+        Returns: (corrected_x, corrected_y) - the initialized position
+        """
+        # Get finger name for this channel
+        finger_name = self.imu_to_finger.get(channel)
+        if not finger_name:
+            logger.warning(f"⚠️  Unknown channel {channel} - no finger mapping")
+            return (imu_x, imu_y)
+        
+        # Get calibrated CV position for this finger
+        if finger_name not in self.initial_led_positions:
+            logger.warning(f"⚠️  No calibrated position for {finger_name} (ch{channel})")
+            return (imu_x, imu_y)
+        
+        # Convert pixel position to meters
+        cv_x_px, cv_y_px = self.initial_led_positions[finger_name]
+        cv_x_m = cv_x_px * self.px_to_m
+        cv_y_m = cv_y_px * self.px_to_m
+        
+        # Calculate initial offset to align IMU with CV position
+        initial_offset_x = cv_x_m - imu_x
+        initial_offset_y = cv_y_m - imu_y
+        
+        # Store the offset
+        self.correction_offset[channel] = (initial_offset_x, initial_offset_y)
+        
+        # Calculate corrected position
+        corrected_x = imu_x + initial_offset_x
+        corrected_y = imu_y + initial_offset_y
+        
+        # Store as last corrected position
+        self.last_corrected_pos[channel] = (corrected_x, corrected_y)
+        
+        # Log the initialization
+        logger.info(f"🎯 Initialized ch{channel} ({finger_name}):")
+        logger.info(f"   IMU raw:  ({imu_x:+.4f}, {imu_y:+.4f})m")
+        logger.info(f"   CV target: ({cv_x_m:+.4f}, {cv_y_m:+.4f})m")
+        logger.info(f"   Offset:    ({initial_offset_x:+.4f}, {initial_offset_y:+.4f})m")
+        logger.info(f"   Corrected: ({corrected_x:+.4f}, {corrected_y:+.4f})m")
+        
+        return (corrected_x, corrected_y)
     
     def process(self, packet: dict) -> None:
         """
         Process packet and add corrected_position field.
-        
-        Uses these fields from packet:
-        - packet['led_index'] - which LED was on
-        - packet['blob_centers'] - list of (x, y) tuples
-        - packet['blob_timestamp'] - timestamp of frame
-        - packet['channel'] - IMU channel
-        - packet['position'] - IMU position
-        - packet['dt'] - time delta
-        
-        Modifies packet in place by adding:
-            packet['corrected_position'] = (x, y, z)
         """
         channel = packet.get('channel')
+        if channel is None:
+            return
         
-        # Initialize correction offset for this channel
+        # Initialize correction state for this channel if needed
         if channel not in self.correction_offset:
             self.correction_offset[channel] = (0.0, 0.0)
             self.integral[channel] = (0.0, 0.0)
             self.prev_error[channel] = (0.0, 0.0)
-            
-            # If we have an initial CV position for this channel's finger, use it
-            # This happens if finger_map.json was loaded successfully
-            if channel not in self.last_corrected_pos and channel in self.imu_to_finger:
-                finger_name = self.imu_to_finger[channel]
-                if finger_name in self.initial_led_positions:
-                    self.last_corrected_pos[channel] = self.initial_led_positions[finger_name]
+            self.first_position_received[channel] = False
         
         # Update time tracking
-        if 'position' in packet and channel is not None:
+        if 'position' in packet:
             dt = packet.get('dt', 0.02)
             
             if channel not in self.imu_time:
@@ -142,7 +183,7 @@ class Control:
             
             self.imu_time[channel] += dt
         
-        # Store CV data if present AND update correction when NEW CV data arrives
+        # Handle NEW CV data arrival (update PID correction)
         if 'led_index' in packet and 'blob_centers' in packet and packet['blob_centers']:
             led_index = packet['led_index']
             blob_centers = packet['blob_centers']
@@ -151,11 +192,10 @@ class Control:
             # Map LED index to finger
             cv_finger = self.led_to_finger.get(led_index)
             
-            # If we found a finger and have exactly one blob
             if cv_finger and len(blob_centers) == 1:
                 x_px, y_px = blob_centers[0]
                 
-                # Check if this is NEW CV data (different from what we have stored)
+                # Check if this is NEW CV data
                 is_new_cv_data = False
                 if cv_finger not in self.cv_data:
                     is_new_cv_data = True
@@ -166,11 +206,9 @@ class Control:
                 
                 # Store the new CV data
                 self.cv_data[cv_finger] = (x_px, y_px, cv_timestamp)
-                # print(f"[CONTROL] Stored CV data for {cv_finger} (LED {led_index}): ({x_px:.1f}, {y_px:.1f})px")
                 
-                # If this is NEW CV data, update correction for that finger's channel
+                # If NEW CV data, update correction for that finger's channel
                 if is_new_cv_data:
-                    # Find which channel this finger belongs to
                     cv_channel = None
                     for ch, finger in self.imu_to_finger.items():
                         if finger == cv_finger:
@@ -178,66 +216,55 @@ class Control:
                             break
                     
                     if cv_channel is not None and cv_channel in self.last_corrected_pos:
-                        # Calculate dt = time since last CV update for this finger
+                        # Calculate dt since last CV update
                         if cv_finger in self.last_cv_time:
                             cv_dt = cv_timestamp - self.last_cv_time[cv_finger]
                         else:
                             cv_dt = 0.1  # Default for first update (~10Hz)
                         
-                        # Use the last known corrected position for this channel
+                        # Use last known corrected position
                         last_x, last_y = self.last_corrected_pos[cv_channel]
-                        # print(f"[CONTROL] NEW CV data for {cv_finger} (ch{cv_channel}) - updating correction (dt={cv_dt:.3f}s)")
                         self._update_correction(cv_channel, cv_finger, last_x, last_y, cv_dt)
                         
-                        # Store this CV timestamp for next dt calculation
+                        # Store timestamp for next dt calculation
                         self.last_cv_time[cv_finger] = cv_timestamp
         
         # Apply correction to IMU position
-        if 'position' in packet and channel is not None:
+        if 'position' in packet:
             imu_x, imu_y, imu_z = packet['position']
             
-            # On first position packet for this channel, calculate initial offset
-            # to align IMU starting position with calibrated CV position
-            if channel in self.imu_to_finger and not self.initial_offset_applied.get(channel, False):
-                finger_name = self.imu_to_finger[channel]
-                if finger_name in self.initial_led_positions:
-                    # Calculate offset needed to place IMU at CV calibrated position
-                    cv_x, cv_y = self.initial_led_positions[finger_name]
-                    initial_offset_x = cv_x - imu_x
-                    initial_offset_y = cv_y - imu_y
-                    self.correction_offset[channel] = (initial_offset_x, initial_offset_y)
-                    self.initial_offset_applied[channel] = True
-                    print(f"[CONTROL] Set initial offset for ch{channel} ({finger_name}): IMU({imu_x:.3f},{imu_y:.3f}) -> CV({cv_x:.3f},{cv_y:.3f}) offset=({initial_offset_x:.3f},{initial_offset_y:.3f})m")
+            # ============================================================
+            # INITIAL POSITION ALIGNMENT (first packet for this channel)
+            # ============================================================
+            if not self.first_position_received[channel]:
+                self.first_position_received[channel] = True
+                
+                if self.calibration_loaded:
+                    # Initialize position using CV calibration
+                    corrected_x, corrected_y = self.initialize_channel_position(channel, imu_x, imu_y)
+                else:
+                    # No calibration - just use raw IMU position
+                    corrected_x, corrected_y = imu_x, imu_y
+                    logger.warning(f"⚠️  Ch{channel}: Starting at raw IMU position (no calibration)")
+                
+                corrected_z = imu_z
+            else:
+                # Normal operation - apply current correction offset
+                offset_x, offset_y = self.correction_offset[channel]
+                corrected_x = imu_x + offset_x
+                corrected_y = imu_y + offset_y
+                corrected_z = imu_z
             
-            offset_x, offset_y = self.correction_offset[channel]
-            
-            # Apply current correction offset
-            corrected_x = imu_x + offset_x
-            corrected_y = imu_y + offset_y
-            corrected_z = imu_z  # Z unchanged (no CV data for Z)
-            
+            # Store corrected position in packet
             packet['corrected_position'] = (corrected_x, corrected_y, corrected_z)
             
-            # Store this as the last corrected position for this channel
+            # Update last corrected position
             self.last_corrected_pos[channel] = (corrected_x, corrected_y)
-            
     
     def _update_correction(self, channel: int, finger: str, current_x: float, current_y: float, dt: float) -> None:
         """
         Update correction offset using PID control.
-        
-        Args:
-            channel: IMU channel
-            finger: Finger name
-            current_x, current_y: Current corrected position
-            dt: Time step
         """
-        # Initialize PID state for this channel if not present
-        if channel not in self.integral:
-            self.integral[channel] = (0.0, 0.0)
-        if channel not in self.prev_error:
-            self.prev_error[channel] = (0.0, 0.0)
-        
         # Get CV measurement
         cv_x_px, cv_y_px, cv_timestamp = self.cv_data[finger]
         
@@ -248,8 +275,6 @@ class Control:
         # Calculate error (CV is ground truth)
         error_x = cv_x_m - current_x
         error_y = cv_y_m - current_y
-        
-        print(f"[PID] {finger}: CV=({cv_x_m:.3f}, {cv_y_m:.3f})m, IMU=({current_x:.3f}, {current_y:.3f})m, Error=({error_x:.3f}, {error_y:.3f})m")
         
         # Get previous state
         integral_x, integral_y = self.integral[channel]
@@ -269,8 +294,6 @@ class Control:
         d_y = self.kd * (error_y - prev_error_y) / dt if dt > 0 else 0.0
         correction_y = p_y + i_y + d_y
         
-        print(f"[PID] Correction: ({correction_x*1000:.1f}, {correction_y*1000:.1f})mm")
-        
         # Update correction offset
         offset_x, offset_y = self.correction_offset[channel]
         self.correction_offset[channel] = (offset_x + correction_x, offset_y + correction_y)
@@ -278,6 +301,12 @@ class Control:
         # Update state
         self.integral[channel] = (integral_x, integral_y)
         self.prev_error[channel] = (error_x, error_y)
+        
+        # Log significant corrections
+        error_magnitude = (error_x**2 + error_y**2)**0.5
+        if error_magnitude > 0.01:  # More than 10mm error
+            logger.debug(f"[PID ch{channel}] Error: {error_magnitude*1000:.1f}mm, "
+                        f"Correction: ({correction_x*1000:.1f}, {correction_y*1000:.1f})mm")
     
     def get_correction_offset(self, channel: int) -> Tuple[float, float]:
         """Get current correction offset for a channel."""
@@ -289,3 +318,4 @@ class Control:
             self.correction_offset[channel] = (0.0, 0.0)
             self.integral[channel] = (0.0, 0.0)
             self.prev_error[channel] = (0.0, 0.0)
+            self.first_position_received[channel] = False

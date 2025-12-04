@@ -16,16 +16,16 @@ if platform.system() == 'Linux':
     os.environ['QT_QPA_PLATFORM'] = 'xcb'
     os.environ['QT_LOGGING_RULES'] = '*.debug=false;qt.qpa.*=false'
 # PID values
-PID_KP = 0.5 # Porportional gain
-PID_KI = 0.1 # Integral gain
+PID_KP = 1.0 # Porportional gain
+PID_KI = 0.01 # Integral gain
 PID_KD = 0.2 # Derivative gain
 
 # OpenCV parameters
 THRESH = 225 # Binary threshold for LED detection
 MIN_AREA = 50 # Minimum area of detected blob
-MAX_AREA = 10000 # Maximum area of detected blob
+MAX_AREA = 400 # Maximum area of detected blob
 MIN_CIRC = 0.6 # Minimum circularity of detected blob
-PIXEL_PER_MM = 10.0 # Pixels per millimeter conversion
+PIXEL_PER_MM = 1.0 # Pixels per millimeter conversion
 
 # Parse args FIRST (before any imports that use Qt)
 parser = argparse.ArgumentParser(
@@ -74,15 +74,6 @@ import math
 import numpy as np  # ADD THIS
 from collections import defaultdict
 from letter_recognizer2 import LetterRecognizer2
-from imu_processing.control import Control
-
-control = Control()
-recognizer = LetterRecognizer2()
-recognizer.debug_mode = True
-
-# Try to load existing calibration data
-recognizer.load_calibration()
-
 # for cv functionality
 from computer_vision.cv import VisionProcessor
 
@@ -95,7 +86,34 @@ from imu_processing import (
     Recording,
     PlaybackClient,
     Control
+) 
+
+
+log_level = logging.ERROR if args.quiet else (logging.DEBUG if args.debug else logging.INFO)
+logging.basicConfig(
+    level=log_level,
+    format="%(asctime)-15s %(levelname)s: %(message)s"
 )
+logger = logging.getLogger(__name__)
+
+if not args.calibrate and not args.playback:
+    if not os.path.exists("finger_map.json"):
+        logger.error("❌ finger_map.json not found!")
+        logger.error("   Run calibration first: python main.py --calibrate")
+        import sys
+        sys.exit(1)
+    else:
+        logger.info("✅ Found finger_map.json")
+
+recognizer = LetterRecognizer2()
+recognizer.debug_mode = True
+
+if os.path.exists("open_hand_calibration.json"):
+    recognizer.load_calibration()
+    logger.info("✅ Loaded open-hand calibration")
+else:
+    logger.warning("⚠️  No open-hand calibration found")
+    logger.warning("   Run: python main.py --calibrate")
 
 # Dead reckoning Kalman parameters
 GRAVITY_CONVENTION = 'NED' # 'NED' or 'ENU' This should be correct 
@@ -106,7 +124,6 @@ DEAD_P = 0.1 # Estimate error covariance
 # Dead reckoning safety margin for thresholds CALIBRATION
 SAFETY_MARGIN = 1.5
 
-logger = logging.getLogger(__name__)
 MADGWICK_WARMUP_PACKETS = 200
 
 def parse_graph_mode(args):
@@ -331,9 +348,22 @@ async def main(args):
     
     # Initialize Control for position correction
     control = Control(kp=args.pid_kp, ki=args.pid_ki, kd=args.pid_kd)
+
+    # SET PIXEL-TO-METER CONVERSION IMMEDIATELY (before any processing)
     control.px_to_m = 1.0 / (args.px_per_mm * 1000)
-    logger.info(f"🎛️  PID Control initialized: Kp={args.pid_kp}, Ki={args.pid_ki}, Kd={args.pid_kd}")
-    logger.info(f"📏 Pixel-to-meter conversion: {control.px_to_m:.6f} m/px ({args.px_per_mm} px/mm)")
+
+    logger.info("="*70)
+    logger.info("🎛️  CONTROL SYSTEM CONFIGURATION")
+    logger.info("="*70)
+    logger.info(f"PID Gains: Kp={args.pid_kp}, Ki={args.pid_ki}, Kd={args.pid_kd}")
+    logger.info(f"Pixel scale: {args.px_per_mm} px/mm")
+    logger.info(f"Conversion: {control.px_to_m:.6f} m/px")
+    logger.info(f"Calibration loaded: {control.calibration_loaded}")
+    if control.calibration_loaded:
+        logger.info(f"Calibrated fingers: {list(control.initial_led_positions.keys())}")
+    logger.info("="*70)
+    logger.info("")
+
     
     # Per-IMU filters
     madgwick_filters = {}
@@ -514,7 +544,53 @@ async def main(args):
                 
                 # Apply position correction using Control
                 control.process(imu_packet)
-                
+
+                if 'first_corrected_logged' not in position_tracker:
+                    position_tracker['first_corrected_logged'] = {}
+
+                if channel not in position_tracker['first_corrected_logged']:
+                    if 'corrected_position' in imu_packet:
+                        cx, cy, cz = imu_packet['corrected_position']
+                        rx, ry, rz = imu_packet['position']
+                        offset = control.get_correction_offset(channel)
+                        finger_name = control.imu_to_finger.get(channel, f"ch{channel}")
+                        
+                        logger.info("")
+                        logger.info(f"📍 Ch{channel} ({finger_name}) first corrected position:")
+                        logger.info(f"   Raw IMU:   ({rx:+.4f}, {ry:+.4f}, {rz:+.4f})m")
+                        logger.info(f"   Offset:    ({offset[0]:+.4f}, {offset[1]:+.4f})m")
+                        logger.info(f"   Corrected: ({cx:+.4f}, {cy:+.4f}, {cz:+.4f})m")
+                        logger.info("")
+                        
+                        position_tracker['first_corrected_logged'][channel] = True
+
+                packet_count += 1
+
+                if packet_count % 100 == 0 and control.correction_offset:
+                    logger.info("="*70)
+                    logger.info(f"📊 DRIFT MONITORING (packet {packet_count})")
+                    logger.info("="*70)
+                    
+                    for ch in sorted(control.correction_offset.keys()):
+                        offset_x, offset_y = control.correction_offset[ch]
+                        offset_mag = (offset_x**2 + offset_y**2)**0.5
+                        
+                        finger = control.imu_to_finger.get(ch, f"ch{ch}")
+                        
+                        # Color code based on drift magnitude
+                        if offset_mag < 0.01:  # <10mm
+                            status = "🟢 GOOD"
+                        elif offset_mag < 0.05:  # <50mm
+                            status = "🟡 MODERATE"
+                        else:  # >50mm
+                            status = "🔴 HIGH"
+                        
+                        logger.info(f"  {finger:8} {status}: offset=({offset_x*1000:+6.1f}, {offset_y*1000:+6.1f})mm "
+                                f"| total={offset_mag*1000:5.1f}mm")
+                    
+                    logger.info("="*70)
+                    logger.info("")
+
                 # Track stationary state from ZUPT for letter recognition
                 if 'zupt_info' in imu_packet:
                     zupt_info = imu_packet['zupt_info']
@@ -734,31 +810,13 @@ if __name__ == "__main__":
     
     mp.set_start_method('spawn', force=True)  # Cross-platform compatibility
     
-    # BLE MODE: Platform-specific defaults
-    if platform.system() == 'Windows':
-        if args.no_plot is None:
-            args.no_plot = True  # No plot on Windows BLE
-        if args.record is None:
-            args.record = True  # Auto-record on Windows BLE
-    else:
-        # Linux/Mac BLE
-        if args.no_plot is None:
-            args.no_plot = False  # Plot on Linux/Mac
-        if args.record is None:
-            args.record = False  # Don't auto-record on Linux/Mac
-
-    # Handle override flags
-    if args.force_plot:
-        args.no_plot = False
-    if args.no_record:
-        args.record = False
-    
-    # Setup logging
-    log_level = logging.ERROR if args.quiet else (logging.DEBUG if args.debug else logging.INFO)
-    logging.basicConfig(
-        level=log_level,
-        format="%(asctime)-15s %(levelname)s: %(message)s"
-    )
+    # REMOVE THIS SECTION - logging is already set up earlier!
+    # # Setup logging
+    # log_level = logging.ERROR if args.quiet else (logging.DEBUG if args.debug else logging.INFO)
+    # logging.basicConfig(
+    #     level=log_level,
+    #     format="%(asctime)-15s %(levelname)s: %(message)s"
+    # )
     
     # Vision defaults
     if args.no_vision:
@@ -766,42 +824,64 @@ if __name__ == "__main__":
     else:
         args.vision = True  # Default to enabled
     
-    # Smart defaults
+    # BLE MODE: Platform-specific defaults
     if args.playback:
+        # Playback mode
         if args.no_plot is None:
             args.no_plot = False
         if args.record is None:
             args.record = False
     else:
+        # Live BLE mode
         if platform.system() == 'Windows':
             if args.no_plot is None:
-                args.no_plot = True
+                args.no_plot = True  # No plot on Windows BLE
             if args.record is None:
-                args.record = True
+                args.record = True  # Auto-record on Windows BLE
         else:
+            # Linux/Mac BLE
             if args.no_plot is None:
-                args.no_plot = False
+                args.no_plot = False  # Plot on Linux/Mac
             if args.record is None:
-                args.record = False
-    
+                args.record = False  # Don't auto-record on Linux/Mac
+
+    # Handle override flags
     if args.force_plot:
         args.no_plot = False
     if args.no_record:
         args.record = False
     
-    # Inform user
-    logger.info(f"🎛️  PID enabled: Kp={args.pid_kp}, Ki={args.pid_ki}, Kd={args.pid_kd}, px_to_m={args.px_per_mm}")
+    # Inform user about settings
+    logger.info("")
+    logger.info("="*70)
+    logger.info("🚀 ASL GLOVE SYSTEM STARTING")
+    logger.info("="*70)
     logger.info(f"📹 Vision: {'Enabled' if args.vision else 'Disabled (--no-vision)'}")
+    logger.info(f"📊 Plotting: {'Enabled' if not args.no_plot else 'Disabled'}")
+    logger.info(f"💾 Recording: {'Enabled' if args.record else 'Disabled'}")
     
     if args.playback:
-        logger.info(f"📼 Playback mode: {args.playback}")
+        logger.info(f"📼 Mode: Playback ({args.playback})")
+        if args.fast:
+            logger.info(f"⚡ Speed: Fast (no timing)")
+        else:
+            logger.info(f"⏱️  Speed: {args.speed}x")
+    elif args.calibrate:
+        logger.info("🔧 Mode: Calibration")
     else:
+        logger.info("📡 Mode: Live BLE")
         if platform.system() == 'Windows':
-            logger.info("🪟 Windows BLE mode:")
-            if args.no_plot:
-                logger.info("  • No plotting (use --force-plot to override)")
-            else:
-                logger.warning("  • Plotting enabled (may cause BLE issues!)")
+            logger.info("🪟 Platform: Windows")
+            if not args.no_plot:
+                logger.warning("  ⚠️  Plotting enabled - may cause BLE issues!")
+    
+    logger.info("="*70)
+    logger.info("")
     
     # Run main
-    asyncio.run(main(args))
+    try:
+        asyncio.run(main(args))
+    except KeyboardInterrupt:
+        logger.info("\n🛑 Interrupted by user")
+    except Exception as e:
+        logger.error(f"\n❌ Fatal error: {e}", exc_info=True)

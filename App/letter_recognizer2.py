@@ -486,11 +486,11 @@ class LetterRecognizer2:
         # Get raw detection for this frame
         raw_letter = self.letter_from_states(states, packet)
         
-        # Debug mode: print raw detections with stationary state
-        if self.debug_mode:
-            self.debug_counter += 1
-            stationary_str = "STABLE" if is_stationary else "MOVING" if is_stationary is False else "UNKNOWN"
-            print(f"[RAW {self.debug_counter}] {stationary_str}(conf={stationary_confidence:.2f}) Letter={raw_letter}, States={states}")
+        # # Debug mode: print raw detections with stationary state
+        # if self.debug_mode:
+        #     self.debug_counter += 1
+        #     stationary_str = "STABLE" if is_stationary else "MOVING" if is_stationary is False else "UNKNOWN"
+        #     print(f"[RAW {self.debug_counter}] {stationary_str}(conf={stationary_confidence:.2f}) Letter={raw_letter}, States={states}")
         
         # Add to history (use None if no detection)
         self.letter_history.append(raw_letter)
