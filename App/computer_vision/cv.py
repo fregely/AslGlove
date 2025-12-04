@@ -212,7 +212,25 @@ class VisionProcessor:
                         continue
                     raw_cx = int(M["m10"] / M["m00"])
                     raw_cy = int(M["m01"] / M["m00"])
-
+                    
+                    # Additional filtering: Check actual brightness at blob center
+                    # LEDs should be very bright (near 255)
+                    if 0 <= raw_cy < gray.shape[0] and 0 <= raw_cx < gray.shape[1]:
+                        center_brightness = gray[raw_cy, raw_cx]
+                        
+                        # During calibration, be extra strict
+                        if self.calibration_mode:
+                            # Require very bright (>240) and good circularity (>0.7)
+                            if center_brightness < 240 or circ < 0.7:
+                                continue
+                        else:
+                            # Normal mode: balance between detecting LEDs and avoiding reflections
+                            # Tape reflections typically 180-230, LEDs 230-255
+                            if center_brightness < 230 or circ < 0.6:
+                                continue
+                    else:
+                        continue  # Out of bounds
+                    
                     # Apply LED→IMU offset in image space
                     dx, dy = self.LED_OFFSET_PX
                     cx = int(raw_cx + dx)
