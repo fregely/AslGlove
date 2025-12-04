@@ -1,5 +1,5 @@
-# cv.py - TUNED differential to only detect BRIGHT LED changes
-# The "thermal" effect means it's working, just too sensitive!
+# cv.py - PRODUCTION VERSION with Brightness Change Detection
+# Works for both letter recognition AND calibration modes
 
 import cv2
 import numpy as np
@@ -19,11 +19,20 @@ LED_WRITE_UUID = LED_STATE_UUID
 
 CMD_START = bytes([1])
 CMD_NEXT = bytes([2])
+
 class VisionProcessor:
-    """CV with BRIGHTNESS CHANGE DETECTION - Simplest and most robust."""
+    """
+    Production CV system with brightness change detection.
     
-    def __init__(self, client, record=False, thresh=80, min_area=100, 
-                 max_area=2000, min_circ=0.70, pixel_per_mm=10.0, 
+    Key features:
+    - Detects LEDs by brightness CHANGE (eliminates ambient light)
+    - Temporal validation (requires consistency across frames)
+    - Works in both normal and calibration modes
+    - Interactive threshold tuning
+    """
+    
+    def __init__(self, client, record=False, thresh=240, min_area=50, 
+                 max_area=400, min_circ=0.70, pixel_per_mm=1.0, 
                  calibration_mode=False):
         self.client = client
         self.current_led = -1
@@ -31,27 +40,28 @@ class VisionProcessor:
         self.record = record
         self.calibration_mode = calibration_mode
         
-        # SIMPLIFIED: Only brightness threshold matters
-        self.BRIGHTNESS_THRESH = 250  # Adjust based on your LEDs (150-220)
-        self.MIN_CHANGE_AREA = 50     # New bright blob must be at least this big
+        # BRIGHTNESS CHANGE DETECTION parameters
+        self.BRIGHTNESS_THRESH = thresh  # Absolute brightness threshold for LEDs
+        self.MIN_CHANGE_INTENSITY = 80   # Minimum brightness increase to count as "LED turned on"
         self.kernel = np.ones((3,3), np.uint8)
         self.MIN_AREA = min_area
         self.MAX_AREA = max_area
         self.MIN_CIRC = min_circ
         
-        print(f"🎯 BRIGHTNESS CHANGE DETECTION initialized:")
+        print(f"🎯 BRIGHTNESS CHANGE DETECTION:")
         print(f"   Brightness threshold: {self.BRIGHTNESS_THRESH}")
-        print(f"   Min change area: {self.MIN_CHANGE_AREA} pixels")
-        print(f"   Blob area: {self.MIN_AREA}-{self.MAX_AREA} pixels")
+        print(f"   Min change: {self.MIN_CHANGE_INTENSITY}")
+        print(f"   Blob area: {self.MIN_AREA}-{self.MAX_AREA}px")
         print(f"   Circularity: {self.MIN_CIRC}+")
         
-        # Track previous brightness mask
+        # Track previous frame for change detection
+        self.prev_gray = None
         self.prev_bright_mask = None
         
-        # Temporal filtering (keep this - it's still useful)
+        # Temporal validation (requires stability over multiple frames)
         self.detection_history = defaultdict(lambda: deque(maxlen=3))
-        self.REQUIRED_CONSECUTIVE = 2  # Less strict since we're more confident
-        self.POSITION_STABILITY_THRESHOLD = 8  # pixels
+        self.REQUIRED_CONSECUTIVE = 1
+        self.POSITION_STABILITY_THRESHOLD = 10  # pixels
         
         # Stats
         self.stats = {
@@ -69,13 +79,17 @@ class VisionProcessor:
         self.last_packet = {}
         
         # LED offset
-        self.LED_OFFSET_MM = 7.0
+        self.LED_OFFSET_MM = 0
         self.PX_PER_MM = pixel_per_mm
         self.LED_OFFSET_PX = (0, int(self.LED_OFFSET_MM * self.PX_PER_MM))
         
-        # Mappings
+        # Finger mappings
         self.led_to_finger = {
-            1: "thumb", 3: "index", 20: "middle", 7: "ring", 6: "pinky"
+            4: "thumb",
+            0: "index",
+            1: "middle",
+            2: "ring",
+            3: "pinky"
         }
         
         self.tracked_fingers = {}
@@ -89,51 +103,34 @@ class VisionProcessor:
         self.load_finger_map("finger_map.json")
     
     def load_finger_map(self, filename):
-        """Load calibration."""
+        """Load finger calibration map."""
         try:
             with open(filename, "r") as f:
                 self.finger_map = json.load(f)
             print(f"✅ Loaded {filename}")
         except:
             self.finger_map = {}
-    
-    def _detect_brightness_change(self, current_bright_mask):
-        """
-        Detect NEW bright regions (LED turning on).
-        Returns mask of ONLY the new bright pixels.
-        """
-        if self.prev_bright_mask is None:
-            # First frame - everything is "new"
-            self.prev_bright_mask = current_bright_mask.copy()
-            return current_bright_mask
-        
-        # Find pixels that are bright NOW but were NOT bright before
-        # This is the LED turning on!
-        new_bright_pixels = cv2.bitwise_and(
-            current_bright_mask,
-            cv2.bitwise_not(self.prev_bright_mask)
-        )
-        
-        # Update previous mask
-        self.prev_bright_mask = current_bright_mask.copy()
-        
-        return new_bright_pixels
+            print(f"⚠️  No {filename}")
     
     def _temporal_validation(self, led_index, cx, cy):
-        """Only accept detections stable across multiple frames."""
+        """
+        Validate detection is stable across multiple consecutive frames.
+        Returns (is_valid, reason_string)
+        """
         history = self.detection_history[led_index]
         history.append((cx, cy))
         
         if len(history) < self.REQUIRED_CONSECUTIVE:
-            return False, f"History:{len(history)}/{self.REQUIRED_CONSECUTIVE}"
+            return False, f"Need {self.REQUIRED_CONSECUTIVE} frames (have {len(history)})"
         
+        # Check if recent positions are stable
         recent = list(history)[-self.REQUIRED_CONSECUTIVE:]
         positions = np.array(recent)
         
         std_x = np.std(positions[:, 0])
         std_y = np.std(positions[:, 1])
-        
         max_std = max(std_x, std_y)
+        
         if max_std < self.POSITION_STABILITY_THRESHOLD:
             return True, f"Stable(std={max_std:.1f}px)"
         else:
@@ -141,46 +138,50 @@ class VisionProcessor:
     
     def _calculate_blob_quality(self, area, circ, brightness, is_new_change):
         """
-        Quality score heavily weighted toward:
-        1. Being a NEW bright change (most important!)
-        2. High brightness
-        3. Good circularity
-        4. Reasonable area
+        Calculate quality score 0-1.
+        
+        Priority scoring:
+        1. Is it a NEW bright change? (most important for change detection)
+        2. Is it bright enough? (LEDs are very bright)
+        3. Is it circular? (LEDs are round)
+        4. Is the area reasonable? (not too small/large)
         """
-        # Area score
-        if 150 <= area <= 700:
+        # Area score - prefer 150-500 pixels
+        if 150 <= area <= 500:
             area_score = 1.0
         elif area < 150:
             area_score = area / 150
         else:
-            area_score = max(0.2, 1.0 - (area - 700) / 1500)
+            area_score = max(0.2, 1.0 - (area - 500) / 1000)
         
-        # Circularity score
+        # Circularity - LEDs are round
         circ_score = circ
         
-        # Brightness score
-        brightness_score = min(1.0, brightness / 230.0)
+        # Brightness - LEDs are very bright (>220 usually)
+        brightness_score = min(1.0, (brightness - 200) / 50.0)  # Normalize 200-250 → 0-1
+        brightness_score = max(0, brightness_score)
         
-        # NEW CHANGE score (most important!)
-        change_score = 1.0 if is_new_change else 0.3
+        # NEW CHANGE - heavily prioritize new bright regions
+        change_score = 1.0 if is_new_change else 0.4
         
-        # Combined score - heavily weight change detection
-        return (area_score * 0.10 + 
+        # Combined - change detection is most important
+        return (area_score * 0.15 + 
                 circ_score * 0.20 + 
-                brightness_score * 0.20 + 
-                change_score * 0.50)  # 50% weight on being NEW!
+                brightness_score * 0.20 +
+                change_score * 0.45)
     
     def handler(self, _ch, data):
-        """BLE callback."""
+        """BLE callback - LED state notification."""
         if len(data) == 1:
             self.current_led = int(data[0])
             self.ready_flag = True
 
     async def start(self):
-        """Main vision loop with BRIGHTNESS CHANGE detection."""
+        """Main vision loop."""
         import sys
         print("="*70, file=sys.stderr, flush=True)
         print("🎬 VISION STARTING - BRIGHTNESS CHANGE MODE", file=sys.stderr, flush=True)
+        print(f"   Calibration mode: {self.calibration_mode}", file=sys.stderr, flush=True)
         print("="*70, file=sys.stderr, flush=True)
         
         # Camera setup
@@ -191,20 +192,18 @@ class VisionProcessor:
         cap.set(cv2.CAP_PROP_FPS, 60)
 
         if not cap.isOpened():
-            print("❌ Camera failed to open", file=sys.stderr, flush=True)
+            print("❌ Camera failed", file=sys.stderr, flush=True)
             return
         
         print("✅ Camera opened", file=sys.stderr, flush=True)
         
         # Warm up
         for i in range(10):
-            ret, _ = cap.read()
-            if not ret:
-                print(f"❌ Warmup frame {i} failed", file=sys.stderr, flush=True)
+            cap.read()
         
-        print("✅ Camera warmed up", file=sys.stderr, flush=True)
+        print("✅ Camera ready", file=sys.stderr, flush=True)
         
-        # CSV
+        # CSV setup
         if self.record:
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
             csv_filename = f"vision_blobs_{ts}.csv"
@@ -217,14 +216,14 @@ class VisionProcessor:
             ])
             print(f"💾 CSV: {csv_filename}")
         
-        # Start LED cycling
+        # Start LED cycling (normal mode only)
         if not self.calibration_mode:
             await self.client.write_gatt_char(LED_WRITE_UUID, CMD_START, response=False)
             print("✅ LED cycling started", file=sys.stderr, flush=True)
         
         prev_time = time.time()
         
-        print("🎬 Entering main loop...", file=sys.stderr, flush=True)
+        print("🎬 Main loop starting...", file=sys.stderr, flush=True)
         
         try:
             while True:
@@ -236,7 +235,7 @@ class VisionProcessor:
                 else:
                     await asyncio.sleep(0)
                 
-                # Capture
+                # Capture frame
                 ret, frame = cap.read()
                 if not ret:
                     continue
@@ -244,32 +243,45 @@ class VisionProcessor:
                 self.stats['total'] += 1
                 frame_ts = time.time()
                 
-                # Process
+                # Convert to grayscale
                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                 blurred = cv2.GaussianBlur(gray, (5, 5), 0)
                 
-                # Get brightness mask (all bright pixels)
-                _, bright_mask = cv2.threshold(blurred, self.BRIGHTNESS_THRESH, 255, cv2.THRESH_BINARY)
+                # === BRIGHTNESS CHANGE DETECTION ===
                 
-                # KEY STEP: Detect CHANGE (new bright regions)
-                change_mask = self._detect_brightness_change(bright_mask)
+                # 1. Find all currently bright pixels
+                _, current_bright = cv2.threshold(blurred, self.BRIGHTNESS_THRESH, 255, cv2.THRESH_BINARY)
                 
-                # Clean up change mask
-                change_mask = cv2.morphologyEx(change_mask, cv2.MORPH_OPEN, self.kernel)
-                change_mask = cv2.morphologyEx(change_mask, cv2.MORPH_CLOSE, self.kernel, iterations=2)
+                # 2. Find NEW bright pixels (change detection)
+                if self.prev_bright_mask is not None and not self.calibration_mode:
+                    # Pixels that are bright NOW but were NOT bright before
+                    new_bright = cv2.bitwise_and(
+                        current_bright,
+                        cv2.bitwise_not(self.prev_bright_mask)
+                    )
+                else:
+                    # First frame or calibration mode - treat all bright as "new"
+                    new_bright = current_bright.copy()
                 
-                # Find blobs in BOTH masks
-                # 1. Blobs in change mask (NEW LEDs - highest priority)
-                change_contours, _ = cv2.findContours(change_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                # Update previous mask
+                self.prev_bright_mask = current_bright.copy()
                 
-                # 2. Blobs in brightness mask (ALL bright things - lower priority)
-                bright_contours, _ = cv2.findContours(bright_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                # 3. Clean up masks
+                new_bright = cv2.morphologyEx(new_bright, cv2.MORPH_OPEN, self.kernel)
+                new_bright = cv2.morphologyEx(new_bright, cv2.MORPH_CLOSE, self.kernel, iterations=2)
                 
-                # Analyze blobs
+                current_bright_clean = cv2.morphologyEx(current_bright, cv2.MORPH_OPEN, self.kernel)
+                current_bright_clean = cv2.morphologyEx(current_bright_clean, cv2.MORPH_CLOSE, self.kernel, iterations=2)
+                
+                # 4. Find contours in BOTH masks
+                new_contours, _ = cv2.findContours(new_bright, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                all_bright_contours, _ = cv2.findContours(current_bright_clean, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                
+                # 5. Process candidates
                 candidates = []
                 
-                # First, process NEW bright blobs (highest confidence)
-                for c in change_contours:
+                # Priority 1: NEW bright regions (LED just turned on!)
+                for c in new_contours:
                     area = cv2.contourArea(c)
                     if not (self.MIN_AREA < area < self.MAX_AREA):
                         continue
@@ -290,16 +302,16 @@ class VisionProcessor:
                     cx = int(raw_cx + dx)
                     cy = int(raw_cy + dy)
                     
-                    # Get brightness at this location
+                    # Get brightness
                     mask_region = np.zeros_like(blurred)
                     cv2.drawContours(mask_region, [c], -1, 255, -1)
                     mean_brightness = cv2.mean(blurred, mask=mask_region)[0]
                     
-                    # Quality score (this is a NEW change - high priority!)
                     quality = self._calculate_blob_quality(area, circ, mean_brightness, is_new_change=True)
                     
                     candidates.append({
                         "center": (cx, cy),
+                        "raw_center": (raw_cx, raw_cy),
                         "area": area,
                         "circ": circ,
                         "quality": quality,
@@ -308,8 +320,8 @@ class VisionProcessor:
                         "contour": c
                     })
                 
-                # Then, add existing bright blobs as fallback (lower priority)
-                for c in bright_contours:
+                # Priority 2: Existing bright regions (fallback if no new changes detected)
+                for c in all_bright_contours:
                     area = cv2.contourArea(c)
                     if not (self.MIN_AREA < area < self.MAX_AREA):
                         continue
@@ -330,7 +342,7 @@ class VisionProcessor:
                     cx = int(raw_cx + dx)
                     cy = int(raw_cy + dy)
                     
-                    # Skip if we already found this as a "new change"
+                    # Skip if already in candidates from new_bright
                     is_duplicate = any(
                         abs(cand["center"][0] - cx) < 20 and 
                         abs(cand["center"][1] - cy) < 20 
@@ -344,11 +356,11 @@ class VisionProcessor:
                     cv2.drawContours(mask_region, [c], -1, 255, -1)
                     mean_brightness = cv2.mean(blurred, mask=mask_region)[0]
                     
-                    # Quality score (NOT a new change - lower priority)
                     quality = self._calculate_blob_quality(area, circ, mean_brightness, is_new_change=False)
                     
                     candidates.append({
                         "center": (cx, cy),
+                        "raw_center": (raw_cx, raw_cy),
                         "area": area,
                         "circ": circ,
                         "quality": quality,
@@ -357,22 +369,22 @@ class VisionProcessor:
                         "contour": c
                     })
                 
-                # SELECT BEST with TEMPORAL VALIDATION
+                # === SELECT BEST BLOB WITH TEMPORAL VALIDATION ===
                 cv_finger = self.led_to_finger.get(self.current_led)
                 accepted = None
                 reason = "no_candidates"
                 
                 if candidates:
-                    # Sort by quality (NEW changes will rank highest)
+                    # Sort by quality (NEW changes rank highest)
                     candidates.sort(key=lambda b: b['quality'], reverse=True)
                     best = candidates[0]
                     cx, cy = best["center"]
                     
-                    # Quality check
+                    # Quality threshold
                     if best["quality"] < 0.5:
-                        reason = f"Q={best['quality']:.2f}<0.5"
+                        reason = f"Q={best['quality']:.2f}"
                         self.stats['rejected_quality'] += 1
-                    elif cv_finger:
+                    else:
                         # Temporal validation
                         temporal_valid, temporal_reason = self._temporal_validation(self.current_led, cx, cy)
                         
@@ -380,46 +392,46 @@ class VisionProcessor:
                             accepted = best
                             self.stats['accepted'] += 1
                         else:
-                            reason = f"Temporal:{temporal_reason}"
+                            reason = temporal_reason
                             self.stats['rejected_temporal'] += 1
-                    else:
-                        accepted = best
-                        self.stats['accepted'] += 1
                 else:
                     self.stats['no_blobs'] += 1
                 
-                # VISUALIZATION
+                # === VISUALIZATION ===
                 display = frame.copy()
                 
-                # Draw all candidates
+                # Draw all candidates with color coding
                 for cand in candidates:
                     cx, cy = cand["center"]
                     x, y, w, h = cv2.boundingRect(cand["contour"])
                     
                     if cand == accepted:
-                        color = (0, 255, 0)  # Green = accepted
+                        color = (0, 255, 0)  # GREEN = accepted
                         thickness = 3
+                        label_color = (0, 255, 0)
                     elif cand["is_new_change"]:
-                        color = (255, 165, 0)  # Orange = new change but not accepted
+                        color = (255, 165, 0)  # ORANGE = new change but rejected
                         thickness = 2
+                        label_color = (255, 165, 0)
                     else:
-                        color = (128, 128, 128)  # Gray = existing bright blob
+                        color = (128, 128, 128)  # GRAY = existing bright blob
                         thickness = 1
+                        label_color = (128, 128, 128)
                     
                     cv2.rectangle(display, (x, y), (x + w, y + h), color, thickness)
-                    cv2.circle(display, (cx, cy), 4, color, -1)
+                    cv2.circle(display, (cx, cy), 5, color, -1)
                     
                     # Show metrics
-                    change_str = "NEW" if cand["is_new_change"] else "old"
-                    info = f"Q:{cand['quality']:.2f} B:{cand['brightness']:.0f} {change_str}"
-                    cv2.putText(display, info, (cx + 5, cy - 5),
-                               cv2.FONT_HERSHEY_SIMPLEX, 0.35, color, 1)
+                    change_marker = "★" if cand["is_new_change"] else "○"
+                    info = f"{change_marker} Q:{cand['quality']:.2f} B:{cand['brightness']:.0f}"
+                    cv2.putText(display, info, (cx + 8, cy - 8),
+                               cv2.FONT_HERSHEY_SIMPLEX, 0.4, label_color, 1)
                 
-                # Draw rejection reason
+                # Show rejection reason
                 if not accepted and candidates:
                     best = candidates[0]
                     cx, cy = best["center"]
-                    cv2.putText(display, f"REJECT: {reason}", (cx + 5, cy + 15),
+                    cv2.putText(display, f"REJECT: {reason}", (cx + 8, cy + 18),
                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
                 
                 # Store results
@@ -437,6 +449,16 @@ class VisionProcessor:
                     "num_blobs": len(blob_centers)
                 }
                 
+                # CSV logging
+                if self.csv_writer and accepted:
+                    self.csv_writer.writerow([
+                        frame_ts, self.current_led,
+                        accepted["center"][0], accepted["center"][1],
+                        round(accepted['area']), round(accepted['circ'], 2),
+                        round(accepted['quality'], 2), round(accepted['brightness']),
+                        accepted['is_new_change'], True, True
+                    ])
+                # print(f"Frame {self.stats['total']:04d} | LED {self.current_led} | ")
                 # === OVERLAYS ===
                 now = time.time()
                 fps = 1/(now - prev_time) if (now - prev_time) > 0 else 0
@@ -458,12 +480,6 @@ class VisionProcessor:
                     
                     cv2.putText(display, f"Accept:{rate:.0f}%", (10, 140),
                                cv2.FONT_HERSHEY_SIMPLEX, 0.8, rate_color, 2)
-                    
-                    # Show rejection breakdown
-                    cv2.putText(display, f"Rej:Q={self.stats['rejected_quality']} "
-                                        f"T={self.stats['rejected_temporal']}", 
-                               (10, 170),
-                               cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1)
                 
                 # Finger labels
                 for finger, pos in self.finger_positions.items():
@@ -479,18 +495,19 @@ class VisionProcessor:
                                (20, display.shape[0] - 30),
                                cv2.FONT_HERSHEY_SIMPLEX, 2.0, (0, 255, 0), 4)
                 
-                # Candidate count
+                # Candidate info
                 new_count = sum(1 for c in candidates if c["is_new_change"])
                 cv2.putText(display, f"Blobs:{len(candidates)} (NEW:{new_count})", 
-                           (10, 200),
+                           (10, 190),
                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (200, 200, 200), 2)
                 
-                # === DISPLAY WINDOWS ===
-                cv2.imshow("ASL Vision - Main", display)
+                # === DISPLAY ===
+                cv2.imshow("ASL Vision", display)
                 
-                # Debug windows
-                cv2.imshow("1. Brightness Mask", bright_mask)
-                cv2.imshow("2. Change Mask (NEW bright)", change_mask)
+                # Optional: Show brightness and change masks
+                if not self.calibration_mode:
+                    cv2.imshow("Bright Pixels", current_bright_clean)
+                    cv2.imshow("NEW Bright (Change)", new_bright)
                 
                 # Keyboard controls
                 key = cv2.waitKey(1) & 0xFF
@@ -498,7 +515,7 @@ class VisionProcessor:
                     print("\n🛑 User quit")
                     break
                 elif key == ord('r'):
-                    print("🔄 Resetting change detection...")
+                    print("🔄 Reset change detection")
                     self.prev_bright_mask = None
                     self.detection_history.clear()
                 elif key == ord(']'):
@@ -507,6 +524,12 @@ class VisionProcessor:
                 elif key == ord('['):
                     self.BRIGHTNESS_THRESH = max(150, self.BRIGHTNESS_THRESH - 10)
                     print(f"📉 Brightness threshold: {self.BRIGHTNESS_THRESH}")
+                elif key == ord('}'):
+                    self.MIN_CHANGE_INTENSITY += 10
+                    print(f"📈 Change intensity: {self.MIN_CHANGE_INTENSITY}")
+                elif key == ord('{'):
+                    self.MIN_CHANGE_INTENSITY = max(30, self.MIN_CHANGE_INTENSITY - 10)
+                    print(f"📉 Change intensity: {self.MIN_CHANGE_INTENSITY}")
                 
                 # Advance LED
                 if not self.calibration_mode:
@@ -526,9 +549,9 @@ class VisionProcessor:
             if self.csv_file:
                 self.csv_file.close()
             
-            # Final stats
-            print("\n📊 FINAL CV STATISTICS (BRIGHTNESS CHANGE):")
-            print(f"  Frames: {self.stats['total']}")
+            # Print final stats
+            print("\n📊 CV FINAL STATISTICS:")
+            print(f"  Total frames: {self.stats['total']}")
             print(f"  Accepted: {self.stats['accepted']}")
             print(f"  Rejected (quality): {self.stats['rejected_quality']}")
             print(f"  Rejected (temporal): {self.stats['rejected_temporal']}")
@@ -536,10 +559,12 @@ class VisionProcessor:
             
             if self.stats['total'] > 0:
                 rate = 100 * self.stats['accepted'] / self.stats['total']
-                print(f"  Accept rate: {rate:.1f}%")
+                print(f"  Acceptance rate: {rate:.1f}%")
+            
+            print("📴 Vision stopped")
     
     def _assign_fingers(self, blob_centers):
-        """Assign blob to finger."""
+        """Assign detected blob to finger based on current LED index."""
         if not blob_centers or self.current_led < 0:
             return
         
@@ -549,7 +574,13 @@ class VisionProcessor:
         
         cx, cy = blob_centers[0]
         
-        # Smooth tracking
+        # led_order = [1, 3, 20, 7, 6]
+
+
+        # # Get finger for this LED frame
+        # self.correct_led = led_order(self.current_led)
+
+        # Exponential smoothing
         alpha = 0.3
         prev = self.tracked_fingers.get(cv_finger)
         
@@ -564,9 +595,9 @@ class VisionProcessor:
         self.finger_positions[cv_finger] = smoothed
     
     def update_finger_positions(self, mapping):
-        """External update."""
+        """Called by main.py to sync positions."""
         self.finger_positions = mapping
     
     def get_packet(self):
-        """Get latest packet."""
+        """Return latest CV packet."""
         return self.last_packet

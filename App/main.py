@@ -16,16 +16,16 @@ if platform.system() == 'Linux':
     os.environ['QT_QPA_PLATFORM'] = 'xcb'
     os.environ['QT_LOGGING_RULES'] = '*.debug=false;qt.qpa.*=false'
 # PID values
-PID_KP = 1.0 # Porportional gain
-PID_KI = 0.01 # Integral gain
+PID_KP = 0.5 # Porportional gain
+PID_KI = 0.1 # Integral gain
 PID_KD = 0.2 # Derivative gain
 
 # OpenCV parameters
-THRESH = 225 # Binary threshold for LED detection
+THRESH = 245 # Binary threshold for LED detection
 MIN_AREA = 50 # Minimum area of detected blob
-MAX_AREA = 400 # Maximum area of detected blob
+MAX_AREA = 10000 # Maximum area of detected blob
 MIN_CIRC = 0.6 # Minimum circularity of detected blob
-PIXEL_PER_MM = 1.0 # Pixels per millimeter conversion
+PIXEL_PER_MM = 10.0 # Pixels per millimeter conversion
 
 # Parse args FIRST (before any imports that use Qt)
 parser = argparse.ArgumentParser(
@@ -74,6 +74,16 @@ import math
 import numpy as np  # ADD THIS
 from collections import defaultdict
 from letter_recognizer2 import LetterRecognizer2
+from imu_processing.control import Control
+
+logger = logging.getLogger(__name__)
+
+recognizer = LetterRecognizer2()
+recognizer.debug_mode = True
+
+# Try to load existing calibration data
+recognizer.load_calibration()
+
 # for cv functionality
 from computer_vision.cv import VisionProcessor
 
@@ -86,34 +96,7 @@ from imu_processing import (
     Recording,
     PlaybackClient,
     Control
-) 
-
-
-log_level = logging.ERROR if args.quiet else (logging.DEBUG if args.debug else logging.INFO)
-logging.basicConfig(
-    level=log_level,
-    format="%(asctime)-15s %(levelname)s: %(message)s"
 )
-logger = logging.getLogger(__name__)
-
-if not args.calibrate and not args.playback:
-    if not os.path.exists("finger_map.json"):
-        logger.error("❌ finger_map.json not found!")
-        logger.error("   Run calibration first: python main.py --calibrate")
-        import sys
-        sys.exit(1)
-    else:
-        logger.info("✅ Found finger_map.json")
-
-recognizer = LetterRecognizer2()
-recognizer.debug_mode = True
-
-if os.path.exists("open_hand_calibration.json"):
-    recognizer.load_calibration()
-    logger.info("✅ Loaded open-hand calibration")
-else:
-    logger.warning("⚠️  No open-hand calibration found")
-    logger.warning("   Run: python main.py --calibrate")
 
 # Dead reckoning Kalman parameters
 GRAVITY_CONVENTION = 'NED' # 'NED' or 'ENU' This should be correct 
@@ -124,7 +107,7 @@ DEAD_P = 0.1 # Estimate error covariance
 # Dead reckoning safety margin for thresholds CALIBRATION
 SAFETY_MARGIN = 1.5
 
-MADGWICK_WARMUP_PACKETS = 200
+MADGWICK_WARMUP_PACKETS = 5
 
 def parse_graph_mode(args):
     """Parse command line arguments to determine GraphMode."""
@@ -236,7 +219,8 @@ async def main(args):
                         min_area=MIN_AREA, 
                         max_area=MAX_AREA, 
                         min_circ=MIN_CIRC, 
-                        pixel_per_mm=PIXEL_PER_MM)
+                        pixel_per_mm=PIXEL_PER_MM,
+                        calibration_mode=True)
             # Ensure the finger map is loaded
             vp2.load_finger_map("finger_map.json")
             client.set_external_handler(vp2.handler)
@@ -313,9 +297,7 @@ async def main(args):
         }),
         # ZUPT stationary tracking for letter recognition
         'stationary_states': {},  # {channel: is_stationary}
-        'stationary_confidence': {},  # {channel: confidence}
-        # IMU-based finger positions (corrected by PID)
-        'imu_finger_positions': {}  # {finger_name: (x, y, z)}
+        'stationary_confidence': {}  # {channel: confidence}
     }   
     
     def log_position_data(state):
@@ -348,22 +330,9 @@ async def main(args):
     
     # Initialize Control for position correction
     control = Control(kp=args.pid_kp, ki=args.pid_ki, kd=args.pid_kd)
-
-    # SET PIXEL-TO-METER CONVERSION IMMEDIATELY (before any processing)
     control.px_to_m = 1.0 / (args.px_per_mm * 1000)
-
-    logger.info("="*70)
-    logger.info("🎛️  CONTROL SYSTEM CONFIGURATION")
-    logger.info("="*70)
-    logger.info(f"PID Gains: Kp={args.pid_kp}, Ki={args.pid_ki}, Kd={args.pid_kd}")
-    logger.info(f"Pixel scale: {args.px_per_mm} px/mm")
-    logger.info(f"Conversion: {control.px_to_m:.6f} m/px")
-    logger.info(f"Calibration loaded: {control.calibration_loaded}")
-    if control.calibration_loaded:
-        logger.info(f"Calibrated fingers: {list(control.initial_led_positions.keys())}")
-    logger.info("="*70)
-    logger.info("")
-
+    logger.info(f"🎛️  PID Control initialized: Kp={args.pid_kp}, Ki={args.pid_ki}, Kd={args.pid_kd}")
+    logger.info(f"📏 Pixel-to-meter conversion: {control.px_to_m:.6f} m/px ({args.px_per_mm} px/mm)")
     
     # Per-IMU filters
     madgwick_filters = {}
@@ -544,155 +513,65 @@ async def main(args):
                 
                 # Apply position correction using Control
                 control.process(imu_packet)
-
-                if 'first_corrected_logged' not in position_tracker:
-                    position_tracker['first_corrected_logged'] = {}
-
-                if channel not in position_tracker['first_corrected_logged']:
-                    if 'corrected_position' in imu_packet:
-                        cx, cy, cz = imu_packet['corrected_position']
-                        rx, ry, rz = imu_packet['position']
-                        offset = control.get_correction_offset(channel)
-                        finger_name = control.imu_to_finger.get(channel, f"ch{channel}")
-                        
-                        logger.info("")
-                        logger.info(f"📍 Ch{channel} ({finger_name}) first corrected position:")
-                        logger.info(f"   Raw IMU:   ({rx:+.4f}, {ry:+.4f}, {rz:+.4f})m")
-                        logger.info(f"   Offset:    ({offset[0]:+.4f}, {offset[1]:+.4f})m")
-                        logger.info(f"   Corrected: ({cx:+.4f}, {cy:+.4f}, {cz:+.4f})m")
-                        logger.info("")
-                        
-                        position_tracker['first_corrected_logged'][channel] = True
-
-                packet_count += 1
-
-                if packet_count % 100 == 0 and control.correction_offset:
-                    logger.info("="*70)
-                    logger.info(f"📊 DRIFT MONITORING (packet {packet_count})")
-                    logger.info("="*70)
-                    
-                    for ch in sorted(control.correction_offset.keys()):
-                        offset_x, offset_y = control.correction_offset[ch]
-                        offset_mag = (offset_x**2 + offset_y**2)**0.5
-                        
-                        finger = control.imu_to_finger.get(ch, f"ch{ch}")
-                        
-                        # Color code based on drift magnitude
-                        if offset_mag < 0.01:  # <10mm
-                            status = "🟢 GOOD"
-                        elif offset_mag < 0.05:  # <50mm
-                            status = "🟡 MODERATE"
-                        else:  # >50mm
-                            status = "🔴 HIGH"
-                        
-                        logger.info(f"  {finger:8} {status}: offset=({offset_x*1000:+6.1f}, {offset_y*1000:+6.1f})mm "
-                                f"| total={offset_mag*1000:5.1f}mm")
-                    
-                    logger.info("="*70)
-                    logger.info("")
-
+                
                 # Track stationary state from ZUPT for letter recognition
                 if 'zupt_info' in imu_packet:
                     zupt_info = imu_packet['zupt_info']
                     position_tracker['stationary_states'][channel] = zupt_info.get('active', False)
                     position_tracker['stationary_confidence'][channel] = zupt_info.get('confidence', 0.0)
                 
-                # Store corrected IMU positions mapped to finger names
-                # Note: Only X and Y are PID-corrected; Z has accumulated drift, so we ignore it
-                if 'corrected_position' in imu_packet and channel in control.imu_to_finger:
-                    finger_name = control.imu_to_finger[channel]
-                    corrected_x, corrected_y, _ = imu_packet['corrected_position']
-                    # Store as 2D position (ignore uncorrected Z-axis)
-                    position_tracker['imu_finger_positions'][finger_name] = (corrected_x, corrected_y, 0.0)
-                
-                # Assign blobs to fingers → update finger map
+               # Assign blobs to fingers → update finger map
                 if vp and vp.last_blob_centers:
                     vp._assign_fingers(vp.last_blob_centers)
                     vp.update_finger_positions(vp.finger_positions)
 
-                # LETTER RECOGNITION - Hybrid approach with unit conversion
-                # Calibration is in PIXELS, so convert IMU meters→pixels (multiply by 1000)
-                # Priority 1: IMU corrected positions (converted to pixel scale)
-                # Priority 2: Vision positions as fallback (already in pixels)
-                finger_positions_for_recognition = {}
-                
-                # Priority 1: Use IMU corrected positions (meters → pixels via 1000x scale)
-                if position_tracker['imu_finger_positions']:
-                    for finger_name, pos_3d in position_tracker['imu_finger_positions'].items():
-                        # Convert meters to pixel scale (inverse of px_to_m=0.001)
-                        finger_positions_for_recognition[finger_name] = (
-                            pos_3d[0] * 1000,  # x: meters → pixels
-                            pos_3d[1] * 1000,  # y: meters → pixels
-                            0.0                # z: ignore for now
-                        )
-                
-                # Priority 2: Fallback to vision positions for any missing fingers
-                if vp and vp.finger_positions:
-                    for finger_name, pos_2d in vp.finger_positions.items():
-                        if finger_name not in finger_positions_for_recognition:
-                            # Vision positions already in pixels, just add z=0
-                            finger_positions_for_recognition[finger_name] = (pos_2d[0], pos_2d[1], 0.0)
-                
-                # Only attempt recognition if we have finger position data
-                if finger_positions_for_recognition:
-                    # Determine overall hand stability from all IMUs
-                    # Hand is stable only if MAJORITY of IMUs report stationary
+                # ============================================================
+                # LETTER RECOGNITION - CV POSITIONS ONLY
+                # ============================================================
+
+                # # RIGHT BEFORE the letter recognition block, add:
+                # if vp:
+                #     print(f"\n[DEBUG] CV finger_positions: {vp.finger_positions}")
+                #     print(f"[DEBUG] Number of fingers: {len(vp.finger_positions)}")
+                #     print(f"[DEBUG] Stationary states: {position_tracker['stationary_states']}")
+                #     print(f"[DEBUG] Would attempt recognition: {len(vp.finger_positions) >= 3}\n")
+
+                # Then your existing letter recognition code...
+                if vp and vp.finger_positions and len(vp.finger_positions) >= 1:
+                    # Get hand stability from ZUPT
                     stationary_states = list(position_tracker['stationary_states'].values())
                     confidence_scores = list(position_tracker['stationary_confidence'].values())
                     
                     if stationary_states:
-                        # Count how many IMUs are stationary
                         num_stationary = sum(stationary_states)
                         total_imus = len(stationary_states)
-                        
-                        # Hand is stable if >50% of IMUs are stationary
                         is_hand_stable = num_stationary > (total_imus / 2)
-                        
-                        # Average confidence across all IMUs
                         avg_confidence = sum(confidence_scores) / len(confidence_scores) if confidence_scores else 0.0
                     else:
-                        # No ZUPT data yet - allow recognition (backward compatible)
-                        is_hand_stable = None
+                        is_hand_stable = True
                         avg_confidence = 0.0
                     
-                    # Count how many fingers are from IMU vs vision
-                    imu_fingers = len(position_tracker['imu_finger_positions'])
-                    total_fingers = len(finger_positions_for_recognition)
-                    
-                    # Check if any finger has large PID correction (indicates drift/movement)
-                    max_correction = 0.0
-                    for ch in control.imu_to_finger.keys():
-                        offset = control.get_correction_offset(ch)
-                        if offset:
-                            correction_magnitude = math.sqrt(offset[0]**2 + offset[1]**2)
-                            max_correction = max(max_correction, correction_magnitude)
-                    
-                    # Skip recognition if corrections are too large (> 2000mm = 2m)
-                    correction_stable = max_correction < 2000.0
-                    
+                    # Recognize letter using CV positions directly
                     letter = recognizer.recognize(
-                        finger_positions_for_recognition,
-                        is_stationary=is_hand_stable and correction_stable,
-                        stationary_confidence=avg_confidence if correction_stable else 0.0
+                        vp.finger_positions,
+                        is_stationary=is_hand_stable,
+                        stationary_confidence=avg_confidence
                     )
+                    
                     if letter:
-                        if vp:
-                            vp.current_letter = letter
-                        stability_indicator = "🟢" if is_hand_stable and correction_stable and avg_confidence > 0.8 else "🟡"
-                        source_indicator = "📡" if imu_fingers == total_fingers else "🔀"  # 📡=all IMU, 🔀=hybrid
-                        correction_indicator = f"⚠️ drift:{max_correction:.0f}mm" if not correction_stable else ""
-                        print(f"\n{stability_indicator}{source_indicator} LETTER: {letter} (stability: {avg_confidence:.1%}, IMU: {imu_fingers}/{total_fingers}) {correction_indicator}\n")
+                        vp.current_letter = letter
+                        stability_indicator = "🟢" if is_hand_stable and avg_confidence > 0.8 else "🟡"
+                        num_fingers = len(vp.finger_positions)
+                        print(f"\n{stability_indicator}📷 LETTER: {letter} "
+                              f"(stability: {avg_confidence:.1%}, CV fingers: {num_fingers}/5)\n")
+
                                 
-                # Update position tracker (use corrected positions if available)
+                # Update position tracker
                 if channel not in position_tracker['start_position']:
-                    if 'corrected_position' in imu_packet:
-                        position_tracker['start_position'][channel] = imu_packet['corrected_position']
-                    elif 'position' in imu_packet:
+                    if 'position' in imu_packet:
                         position_tracker['start_position'][channel] = imu_packet['position']
 
-                if 'corrected_position' in imu_packet:
-                    position_tracker['last_position'][channel] = imu_packet['corrected_position']
-                elif 'position' in imu_packet:
+                if 'position' in imu_packet:
                     position_tracker['last_position'][channel] = imu_packet['position']
 
                 if 'orientation' in imu_packet:
@@ -810,40 +689,18 @@ if __name__ == "__main__":
     
     mp.set_start_method('spawn', force=True)  # Cross-platform compatibility
     
-    # REMOVE THIS SECTION - logging is already set up earlier!
-    # # Setup logging
-    # log_level = logging.ERROR if args.quiet else (logging.DEBUG if args.debug else logging.INFO)
-    # logging.basicConfig(
-    #     level=log_level,
-    #     format="%(asctime)-15s %(levelname)s: %(message)s"
-    # )
-    
-    # Vision defaults
-    if args.no_vision:
-        args.vision = False
-    else:
-        args.vision = True  # Default to enabled
-    
     # BLE MODE: Platform-specific defaults
-    if args.playback:
-        # Playback mode
+    if platform.system() == 'Windows':
         if args.no_plot is None:
-            args.no_plot = False
+            args.no_plot = True  # No plot on Windows BLE
         if args.record is None:
-            args.record = False
+            args.record = True  # Auto-record on Windows BLE
     else:
-        # Live BLE mode
-        if platform.system() == 'Windows':
-            if args.no_plot is None:
-                args.no_plot = True  # No plot on Windows BLE
-            if args.record is None:
-                args.record = True  # Auto-record on Windows BLE
-        else:
-            # Linux/Mac BLE
-            if args.no_plot is None:
-                args.no_plot = False  # Plot on Linux/Mac
-            if args.record is None:
-                args.record = False  # Don't auto-record on Linux/Mac
+        # Linux/Mac BLE
+        if args.no_plot is None:
+            args.no_plot = False  # Plot on Linux/Mac
+        if args.record is None:
+            args.record = False  # Don't auto-record on Linux/Mac
 
     # Handle override flags
     if args.force_plot:
@@ -851,37 +708,55 @@ if __name__ == "__main__":
     if args.no_record:
         args.record = False
     
-    # Inform user about settings
-    logger.info("")
-    logger.info("="*70)
-    logger.info("🚀 ASL GLOVE SYSTEM STARTING")
-    logger.info("="*70)
+    # Setup logging
+    log_level = logging.ERROR if args.quiet else (logging.DEBUG if args.debug else logging.INFO)
+    logging.basicConfig(
+        level=log_level,
+        format="%(asctime)-15s %(levelname)s: %(message)s"
+    )
+    
+    # Vision defaults
+    if args.no_vision:
+        args.vision = False
+    else:
+        args.vision = True  # Default to enabled
+    
+    # Smart defaults
+    if args.playback:
+        if args.no_plot is None:
+            args.no_plot = False
+        if args.record is None:
+            args.record = False
+    else:
+        if platform.system() == 'Windows':
+            if args.no_plot is None:
+                args.no_plot = True
+            if args.record is None:
+                args.record = True
+        else:
+            if args.no_plot is None:
+                args.no_plot = False
+            if args.record is None:
+                args.record = False
+    
+    if args.force_plot:
+        args.no_plot = False
+    if args.no_record:
+        args.record = False
+    
+    # Inform user
+    logger.info(f"🎛️  PID enabled: Kp={args.pid_kp}, Ki={args.pid_ki}, Kd={args.pid_kd}, px_to_m={args.px_per_mm}")
     logger.info(f"📹 Vision: {'Enabled' if args.vision else 'Disabled (--no-vision)'}")
-    logger.info(f"📊 Plotting: {'Enabled' if not args.no_plot else 'Disabled'}")
-    logger.info(f"💾 Recording: {'Enabled' if args.record else 'Disabled'}")
     
     if args.playback:
-        logger.info(f"📼 Mode: Playback ({args.playback})")
-        if args.fast:
-            logger.info(f"⚡ Speed: Fast (no timing)")
-        else:
-            logger.info(f"⏱️  Speed: {args.speed}x")
-    elif args.calibrate:
-        logger.info("🔧 Mode: Calibration")
+        logger.info(f"📼 Playback mode: {args.playback}")
     else:
-        logger.info("📡 Mode: Live BLE")
         if platform.system() == 'Windows':
-            logger.info("🪟 Platform: Windows")
-            if not args.no_plot:
-                logger.warning("  ⚠️  Plotting enabled - may cause BLE issues!")
-    
-    logger.info("="*70)
-    logger.info("")
+            logger.info("🪟 Windows BLE mode:")
+            if args.no_plot:
+                logger.info("  • No plotting (use --force-plot to override)")
+            else:
+                logger.warning("  • Plotting enabled (may cause BLE issues!)")
     
     # Run main
-    try:
-        asyncio.run(main(args))
-    except KeyboardInterrupt:
-        logger.info("\n🛑 Interrupted by user")
-    except Exception as e:
-        logger.error(f"\n❌ Fatal error: {e}", exc_info=True)
+    asyncio.run(main(args))

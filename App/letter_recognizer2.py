@@ -34,11 +34,11 @@ class LetterRecognizer2:
     # Helper: Euclidean distance
     # -------------------------------
     def dist(self, a, b):
-        return math.sqrt(
-            (a[0] - b[0])**2 +
-            (a[1] - b[1])**2 +
-            (a[2] - b[2])**2
-        )
+        """Calculate distance between two points (2D or 3D)."""
+        dx = a[0] - b[0]
+        dy = a[1] - b[1]
+        dz = (a[2] - b[2]) if len(a) > 2 and len(b) > 2 else 0.0
+        return math.sqrt(dx**2 + dy**2 + dz**2)
 
     # -------------------------------
     # Helper: list of all pair combinations
@@ -227,9 +227,9 @@ class LetterRecognizer2:
         states = {}
 
         # Thresholds with hysteresis bands to reduce noise
-        EXTENDED_MIN = 0.70      # Lowered slightly for easier detection
-        CURL_MAX = 0.50          # Increased to create wider bands
-        CLOSED_MAX = 0.30        # Increased to reduce false closures
+        EXTENDED_MIN = 0.80      # Lowered slightly for easier detection
+        CURL_MAX = 0.60          # Increased to create wider bands
+        CLOSED_MAX = 0.40        # Increased to reduce false closures
 
         for finger in ["index", "middle", "ring", "pinky"]:
 
