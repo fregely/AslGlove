@@ -16,7 +16,7 @@ if platform.system() == 'Linux':
     os.environ['QT_QPA_PLATFORM'] = 'xcb'
     os.environ['QT_LOGGING_RULES'] = '*.debug=false;qt.qpa.*=false'
 # PID values
-PID_KP = 0.5 # Porportional gain
+PID_KP = 1.0 # Porportional gain
 PID_KI = 0.1 # Integral gain
 PID_KD = 0.2 # Derivative gain
 
